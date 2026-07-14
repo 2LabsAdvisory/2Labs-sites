@@ -6,7 +6,7 @@
  * token is a PassCard server-side session token the client stores and sends
  * as a bearer on subsequent calls (validated by /api/edit-site).
  */
-const { isEmailAllowed, passcardFetch } = require('../shared/auth');
+const { isEmailAllowed, sharedAuthFetch, appKey } = require('../shared/auth');
 
 const GENERIC_ERROR = { success: false, error: 'That code is invalid or has expired.' };
 
@@ -26,10 +26,10 @@ module.exports = async function (context, req) {
   }
 
   try {
-    const res = await passcardFetch('/api/auth/verify-code', {
+    const res = await sharedAuthFetch('/api/auth/verify-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, code }),
+      body: JSON.stringify({ email, code, app: appKey() }),
     });
     const body = await res.json().catch(() => GENERIC_ERROR);
     context.res = { status: res.status, body };

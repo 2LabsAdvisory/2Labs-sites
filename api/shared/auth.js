@@ -3,21 +3,37 @@
 /**
  * Shared auth helpers for the 2Labs Sites API.
  *
- * We reuse the existing PassCard passwordless OTP flow (passcard-functions)
- * rather than rebuilding it: this app proxies request-code / verify-code to
- * PassCard server-to-server, and validates the resulting bearer token against
- * PassCard's /api/profile/me. PassCard auto-provisions any email that requests
- * a code, so access here is additionally restricted to an explicit allowlist.
+ * Auth is handled by the shared 2Labs OTP service (in the communications
+ * function app), which every 2Labs product reuses. This app proxies
+ * request-code / verify-code to it server-to-server (with the shared
+ * X-Internal-Api-Key) and validates session tokens against its /auth/me.
+ * PassCard-style OTP still underneath, but centralized and app-branded:
+ * we pass app="2labs-websites", so the sign-in email uses the 2Labs
+ * Websites template from 2Labs Command.
+ *
+ * Access here is additionally restricted to an explicit allowlist.
  *
  * Config (app settings):
- *   PASSCARD_API_BASE_URL   e.g. https://passcard-functions-xxxx.canadacentral-01.azurewebsites.net
- *   EDITOR_ALLOWED_EMAILS   comma-separated list of emails permitted to sign in
+ *   SHARED_AUTH_BASE_URL   e.g. https://func-2labs-communications-prod-....azurewebsites.net
+ *   INTERNAL_API_KEY       shared service-to-service key for the auth endpoints
+ *   APP_KEY                this app's registry key (default "2labs-websites")
+ *   EDITOR_ALLOWED_EMAILS  comma-separated list of emails permitted to sign in
  */
 
-function passcardBaseUrl() {
-  const base = process.env.PASSCARD_API_BASE_URL;
-  if (!base) throw new Error('PASSCARD_API_BASE_URL is not configured.');
+function sharedAuthBaseUrl() {
+  const base = process.env.SHARED_AUTH_BASE_URL;
+  if (!base) throw new Error('SHARED_AUTH_BASE_URL is not configured.');
   return base.replace(/\/+$/, '');
+}
+
+function internalApiKey() {
+  const key = process.env.INTERNAL_API_KEY;
+  if (!key) throw new Error('INTERNAL_API_KEY is not configured.');
+  return key;
+}
+
+function appKey() {
+  return process.env.APP_KEY || '2labs-websites';
 }
 
 /** Parsed allowlist (lowercased). An empty list means "deny everyone" (fail closed). */
@@ -33,21 +49,20 @@ function isEmailAllowed(email) {
   return allowedEmails().includes(email.trim().toLowerCase());
 }
 
-/** Forward a request to the PassCard functions app. Returns the fetch Response. */
-async function passcardFetch(path, options) {
-  return fetch(`${passcardBaseUrl()}${path}`, options);
+/** Call the shared auth service with the internal service-to-service key. */
+async function sharedAuthFetch(path, { headers = {}, ...options } = {}) {
+  return fetch(`${sharedAuthBaseUrl()}${path}`, {
+    ...options,
+    headers: { 'X-Internal-Api-Key': internalApiKey(), ...headers },
+  });
 }
 
-/**
- * Extract the session token from a classic-model Azure Functions request.
- * Azure Static Web Apps strips the standard `Authorization` header before
- * forwarding to managed functions (it reserves that header for its own auth),
- * so the client also sends the token in a custom `x-2labs-session` header,
- * which SWA passes through. We read the custom header first, then fall back to
- * a bearer Authorization header (works for local dev / non-SWA callers).
- */
+/** Extract the session token from a classic-model Azure Functions request. */
 function getBearerToken(req) {
   const headers = (req && req.headers) || {};
+  // Azure Static Web Apps strips the standard Authorization header before
+  // forwarding to managed functions, so the client also sends the token in a
+  // custom x-2labs-session header. Read that first, then Authorization.
   const custom = headers['x-2labs-session'] || headers['X-2Labs-Session'];
   if (custom && String(custom).trim()) return String(custom).trim();
 
@@ -56,19 +71,23 @@ function getBearerToken(req) {
 }
 
 /**
- * Validate a session token against PassCard. Returns the account's lowercased
- * email if the token is valid, else null. Never throws.
+ * Validate a session token against the shared auth service. Returns the
+ * account's lowercased email if the token is valid AND scoped to this app,
+ * else null. Never throws.
  */
 async function validateSessionEmail(token) {
   if (!token) return null;
   try {
-    const res = await passcardFetch('/api/profile/me', {
+    const res = await sharedAuthFetch('/api/auth/me', {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));
-    const email = data && data.user && data.user.email;
+    // The session must belong to this app — a token minted for another 2Labs
+    // app must not be usable here.
+    if (!data || !data.success || data.app !== appKey()) return null;
+    const email = data.user && data.user.email;
     return email ? String(email).toLowerCase() : null;
   } catch {
     return null;
@@ -76,10 +95,12 @@ async function validateSessionEmail(token) {
 }
 
 module.exports = {
-  passcardBaseUrl,
+  sharedAuthBaseUrl,
+  internalApiKey,
+  appKey,
   allowedEmails,
   isEmailAllowed,
-  passcardFetch,
+  sharedAuthFetch,
   getBearerToken,
   validateSessionEmail,
 };

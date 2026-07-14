@@ -6,7 +6,7 @@
  * generic response without a code being sent or an account provisioned, so
  * the endpoint doesn't reveal who is allowed.
  */
-const { isEmailAllowed, passcardFetch } = require('../shared/auth');
+const { isEmailAllowed, sharedAuthFetch, appKey } = require('../shared/auth');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GENERIC = { success: true, message: 'If that email is authorized, a code has been sent.' };
@@ -27,10 +27,10 @@ module.exports = async function (context, req) {
   }
 
   try {
-    const res = await passcardFetch('/api/auth/request-code', {
+    const res = await sharedAuthFetch('/api/auth/request-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, app: appKey() }),
     });
     const body = await res.json().catch(() => GENERIC);
     context.res = { status: res.status, body };
