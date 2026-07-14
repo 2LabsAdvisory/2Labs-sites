@@ -60,6 +60,20 @@ class FakeAnthropic {
 require.cache[require.resolve('@octokit/rest')] = { id: '@octokit/rest', exports: { Octokit: FakeOctokit }, loaded: true };
 require.cache[require.resolve('@anthropic-ai/sdk')] = { id: '@anthropic-ai/sdk', exports: { Anthropic: FakeAnthropic }, loaded: true };
 
+// Mock the auth layer: a request with any bearer token is treated as the
+// allowlisted user; a request with none is unauthenticated.
+require.cache[require.resolve('../shared/auth')] = {
+  id: 'auth', loaded: true,
+  exports: {
+    getBearerToken: (req) => {
+      const h = (req && req.headers && req.headers.authorization) || '';
+      return h.toLowerCase().startsWith('bearer ') ? h.slice(7).trim() : null;
+    },
+    validateSessionEmail: async (token) => (token ? 'aslessor@2labs.ca' : null),
+    isEmailAllowed: (email) => email === 'aslessor@2labs.ca',
+  },
+};
+
 // Env the handler requires
 Object.assign(process.env, {
   ANTHROPIC_API_KEY: 'test', GITHUB_TOKEN: 'test',
@@ -72,10 +86,11 @@ const handler = require(path.join(__dirname, '..', 'edit-site', 'index.js'));
 function makeContext() {
   return { log: Object.assign(() => {}, { error: () => {} }), res: null };
 }
-async function invoke(body) {
+async function invoke(body, { authed = true } = {}) {
   commitCalls = [];
   const ctx = makeContext();
-  await handler(ctx, { body });
+  const headers = authed ? { authorization: 'Bearer test-session-token' } : {};
+  await handler(ctx, { body, headers });
   return ctx.res;
 }
 
@@ -137,6 +152,14 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     const res = await invoke({ prompt: 'change the footer text', confirmStructural: true });
     assert.strictEqual(res.body.status, 'staged');
     assert.strictEqual(commitCalls.length, 1);
+  });
+
+  // Auth gate: a request with no session token is rejected before any work.
+  await check('no session token → 401 and NO commit', async () => {
+    nextModelText = CURRENT_INDEX.replace('Do More Good', 'X');
+    const res = await invoke({ prompt: 'reword the hero heading' }, { authed: false });
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(commitCalls.length, 0);
   });
 
   // Input validation: empty prompt is rejected before any work.

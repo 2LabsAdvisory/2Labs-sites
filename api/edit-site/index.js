@@ -32,11 +32,21 @@
 
 const { Anthropic } = require('@anthropic-ai/sdk');
 const { Octokit } = require('@octokit/rest');
+const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 
 const TARGET_FILE = 'src/pages/index.astro'; // Phase 0: hardcoded to the homepage
 const BRANCH = 'staging';
 
 module.exports = async function (context, req) {
+  // --- Auth gate: require a valid PassCard session whose email is allowlisted.
+  // This is the real security boundary for the edit loop (the static editor/
+  // dashboard HTML is not sensitive; committing AI edits + spending tokens is).
+  const sessionEmail = await validateSessionEmail(getBearerToken(req));
+  if (!sessionEmail || !isEmailAllowed(sessionEmail)) {
+    context.res = { status: 401, body: { error: 'Authentication required.' } };
+    return;
+  }
+
   const prompt = req.body && req.body.prompt;
   // Explicit override for the structural guardrail (see step 2). The client
   // confirms a flagged prompt by re-sending it with confirmStructural: true —

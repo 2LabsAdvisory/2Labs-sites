@@ -21,6 +21,8 @@ const orgInitials = brand.orgName.split(/\s+/).map((w) => w[0]).join('').slice(0
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex, nofollow" />
+<!-- Auth gate (runs before render to avoid a flash of the dashboard). -->
+<script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
 <title>{brand.orgName} — Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -137,6 +139,7 @@ const orgInitials = brand.orgName.split(/\s+/).map((w) => w[0]).join('').slice(0
         {brand.orgName}
       </div>
       <a class="icon-btn" href={`https://${brand.domain}`} target="_blank" rel="noopener" title="About 2Labs">?</a>
+      <button class="icon-btn" id="signOut" title="Sign out" aria-label="Sign out">⎋</button>
     </div>
   </div>
 
@@ -269,6 +272,12 @@ const orgInitials = brand.orgName.split(/\s+/).map((w) => w[0]).join('').slice(0
   const h = new Date().getHours();
   const part = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   document.getElementById('greeting').textContent = part;
+
+  // Sign out: clear the session token and return to login.
+  document.getElementById('signOut').addEventListener('click', () => {
+    localStorage.removeItem('2labs_sites_token');
+    location.replace('/login');
+  });
 </script>
 
 </body>

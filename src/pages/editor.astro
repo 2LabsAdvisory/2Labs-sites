@@ -23,6 +23,8 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex, nofollow" />
+<!-- Auth gate (runs before render to avoid a flash of the editor). -->
+<script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
 <title>{brand.orgName} — Site Editor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -181,6 +183,7 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
     <div class="topbar-right">
       <a class="btn btn-ghost" id="viewStaging" href={STAGING_URL} target="_blank" rel="noopener">View Staging ↗</a>
       <a class="btn btn-primary" id="publishBtn" href={PUBLISH_URL} target="_blank" rel="noopener" title="Opens a GitHub compare view to merge staging → main (production).">Publish Changes</a>
+      <button class="btn btn-ghost" id="signOut" title="Sign out">Sign out</button>
     </div>
   </div>
 
@@ -238,6 +241,11 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
   </div>
 
   <script define:vars={{ STAGING_URL }}>
+    const TOKEN_KEY = '2labs_sites_token';
+    function authToken() { return localStorage.getItem(TOKEN_KEY); }
+    function signOut() { localStorage.removeItem(TOKEN_KEY); location.replace('/login'); }
+    document.getElementById('signOut').addEventListener('click', signOut);
+
     const chatBody = document.getElementById('chatBody');
     const input = document.getElementById('promptInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -326,12 +334,17 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
       try {
         const res = await fetch('/api/edit-site', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (authToken() || '') },
           body: JSON.stringify({ prompt, confirmStructural }),
         });
         const data = await res.json().catch(() => ({}));
         thinking.el.remove();
 
+        if (res.status === 401) {
+          addAssistant('Your session has expired. Redirecting you to sign in…', { error: true });
+          setTimeout(signOut, 1200);
+          return;
+        }
         if (!res.ok) {
           addAssistant(data.error || data.detail || `Something went wrong (HTTP ${res.status}).`, { error: true });
           return;
