@@ -38,6 +38,10 @@ const BRANCH = 'staging';
 
 module.exports = async function (context, req) {
   const prompt = req.body && req.body.prompt;
+  // Explicit override for the structural guardrail (see step 2). The client
+  // confirms a flagged prompt by re-sending it with confirmStructural: true —
+  // re-sending the same prompt alone can't confirm, it just re-trips the check.
+  const confirmStructural = !!(req.body && req.body.confirmStructural);
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     context.res = { status: 400, body: { error: 'A non-empty "prompt" string is required.' } };
@@ -64,13 +68,13 @@ module.exports = async function (context, req) {
 
     // 2. Guardrail check (Phase 0: simple keyword check; Phase 2: replace
     //    with a cheap Haiku classification pass per the model-routing plan)
-    if (isLikelyStructuralRequest(prompt, editPolicy)) {
+    if (!confirmStructural && isLikelyStructuralRequest(prompt, editPolicy)) {
       context.res = {
         status: 200,
         body: {
           status: 'needs_confirmation',
           message:
-            'This looks like it might change site-wide navigation, branding, or layout rather than page content. Reply with the same prompt again to confirm, or rephrase to target a specific page.',
+            'This looks like it might change site-wide navigation, branding, or layout rather than page content. To go ahead anyway, re-send the request with "confirmStructural": true, or rephrase to target specific page content.',
         },
       };
       return;
@@ -90,7 +94,9 @@ module.exports = async function (context, req) {
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-5',
-      max_tokens: 4096,
+      // Must comfortably exceed the whole file; a truncated response would
+      // commit a half-written .astro file and fail the build.
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [
         {
@@ -110,10 +116,33 @@ module.exports = async function (context, req) {
       ],
     });
 
-    const newContent = extractText(message);
+    // Defensive: strip a stray ```astro/``` fence if the model wrapped the file
+    // despite instructions — a fenced file is not valid Astro and fails the build.
+    const newContent = stripCodeFences(extractText(message));
 
-    if (!newContent || newContent.trim().length < 20) {
-      throw new Error('Model returned an unexpectedly short or empty result — refusing to commit.');
+    // Guard the LIVE site: only commit output that still looks like this file.
+    // A refusal or prose reply ("I can't help with that…") is valid text, so
+    // astro build would happily ship it as the homepage — the build safety net
+    // does NOT catch this. Require the invariants this page can't lose.
+    const rejection = validateAstroOutput(newContent, currentContent);
+    if (rejection) {
+      throw new Error(
+        `Refusing to commit: model output failed a safety check (${rejection}). ` +
+          'The live homepage was left unchanged.'
+      );
+    }
+
+    if (newContent.trim() === currentContent.trim()) {
+      context.res = {
+        status: 200,
+        body: {
+          status: 'no_change',
+          file: TARGET_FILE,
+          promptEcho: prompt,
+          note: 'The model returned the file unchanged — nothing was committed.',
+        },
+      };
+      return;
     }
 
     // 5. Commit to staging branch
@@ -147,6 +176,32 @@ module.exports = async function (context, req) {
 async function getJsonFile(octokit, repoRef, path) {
   const res = await octokit.repos.getContent({ ...repoRef, path, ref: BRANCH });
   return JSON.parse(Buffer.from(res.data.content, 'base64').toString('utf-8'));
+}
+
+/**
+ * Remove a single wrapping markdown code fence if the model added one despite
+ * being told not to (```astro / ``` / ~~~). Leaves un-fenced content untouched.
+ */
+function stripCodeFences(text) {
+  const trimmed = text.trim();
+  const fence = trimmed.match(/^(?:```|~~~)[^\n]*\n([\s\S]*?)\n?(?:```|~~~)\s*$/);
+  return fence ? fence[1].trim() : trimmed;
+}
+
+/**
+ * Sanity-check that the model actually returned an edited version of this
+ * .astro file rather than a refusal, an explanation, or something malformed.
+ * Returns a short reason string if the output is unsafe to commit, else null.
+ * Phase 0 is one known file (index.astro), so we can assert its invariants.
+ */
+function validateAstroOutput(newContent, currentContent) {
+  if (!newContent || newContent.trim().length < 40) return 'output too short';
+  // index.astro is rendered through BaseLayout; losing it means the page lost
+  // its layout/SEO shell (or the reply is prose, not the file).
+  if (!newContent.includes('BaseLayout')) return 'missing BaseLayout';
+  // The frontmatter fence is required for a valid .astro component.
+  if (!newContent.trimStart().startsWith('---')) return 'missing frontmatter';
+  return null;
 }
 
 /** Extract plain text from an Anthropic message response. */
@@ -189,3 +244,9 @@ function buildSystemPrompt(brand, org) {
     '- Make the minimal change that satisfies the request. Do not rewrite unrelated sections.',
   ].join('\n');
 }
+
+// Exposed for offline unit tests (api/edit-site/index.test.js). Azure invokes
+// the default function export and ignores these extra properties.
+module.exports.stripCodeFences = stripCodeFences;
+module.exports.validateAstroOutput = validateAstroOutput;
+module.exports.isLikelyStructuralRequest = isLikelyStructuralRequest;
