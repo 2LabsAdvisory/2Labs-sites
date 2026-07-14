@@ -1,0 +1,15 @@
+{
+  "name": "2labs-sites-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Azure Functions API co-located with the Static Web App. Hosts the AI edit endpoint that turns a client prompt into a committed, staged site change.",
+  "main": "dist/*/index.js",
+  "scripts": {
+    "build": "echo \"no build step yet (plain JS functions)\"",
+    "start": "func start"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@octokit/rest": "^21.0.0"
+  }
+}

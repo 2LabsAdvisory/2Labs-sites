@@ -1,0 +1,80 @@
+---
+// BaseLayout.astro
+// Every page on the site uses this layout. It reads the client's brand tokens
+// and org context once, then:
+//   1. Injects brand colors/fonts as CSS variables (so a brand update in
+//      site-config/brand.json propagates to every page on the next build)
+//   2. Renders consistent SEO metadata (title, description, OpenGraph,
+//      schema.org Organization JSON-LD) so pages are crawlable and
+//      well-described by default, without every prompt needing to remember
+//      to add this.
+//   3. Wraps content with the shared Header and Footer components.
+
+import brand from '../../site-config/brand.json';
+import org from '../../site-config/org-context.json';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/tokens.css';
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const canonicalUrl = new URL(Astro.url.pathname, `https://${brand.domain}`);
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title} | {brand.orgName}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonicalUrl} />
+
+  <!-- OpenGraph -->
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content={canonicalUrl} />
+
+  <!-- schema.org: helps Google understand this as a real organization -->
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": brand.orgName,
+    "url": `https://${brand.domain}`,
+    "description": org.mission
+  })} />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href={`https://fonts.googleapis.com/css2?family=${brand.fonts.heading.replace(/ /g,'+')}:wght@500;600;700;800&family=${brand.fonts.body.replace(/ /g,'+')}:wght@400;500;600&display=swap`}
+    rel="stylesheet"
+  />
+
+  <style set:html={`
+    :root {
+      --bg: ${brand.colors.background};
+      --surface: ${brand.colors.surface};
+      --ink: ${brand.colors.ink};
+      --ink-soft: ${brand.colors.inkSoft};
+      --border: ${brand.colors.border};
+      --primary: ${brand.colors.primary};
+      --primary-dark: ${brand.colors.primaryDark};
+      --primary-tint-strong: ${brand.colors.primaryTintStrong};
+      --font-heading: '${brand.fonts.heading}', sans-serif;
+      --font-body: '${brand.fonts.body}', sans-serif;
+    }
+  `} />
+</head>
+<body>
+  <Header orgName={brand.orgName} primaryCta={org.primaryCta} />
+  <main>
+    <slot />
+  </main>
+  <Footer orgName={brand.orgName} />
+</body>
+</html>

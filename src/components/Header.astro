@@ -1,0 +1,68 @@
+---
+// Header.astro
+// STRUCTURAL FILE — see site-config/edit-policy.json. The AI edit endpoint
+// should require an explicit "change the navigation/header" request before
+// touching this file; casual content prompts should never land here.
+
+interface Props {
+  orgName: string;
+  primaryCta: string;
+}
+const { orgName, primaryCta } = Astro.props;
+---
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="/" class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">{orgName}</span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="/solutions">Solutions</a>
+      <a href="/who-we-help">Who We Help</a>
+      <a href="/insights">Insights</a>
+      <a href="/about">About</a>
+    </nav>
+    <a href="/contact" class="cta-btn">{primaryCta}</a>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    background: rgba(248,247,246,0.95);
+    backdrop-filter: blur(6px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .header-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand-mark {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #F6EDE1;
+    display: inline-block;
+  }
+  .brand-name { font-family: var(--font-heading); font-weight: 700; font-size: 16px; color: var(--ink); }
+  nav { display: flex; gap: 22px; }
+  nav a { font-size: 14px; color: var(--ink-soft); text-decoration: none; font-weight: 500; }
+  nav a:hover { color: var(--ink); }
+  .cta-btn {
+    background: var(--primary); color: var(--ink);
+    font-weight: 600; font-size: 13.5px;
+    padding: 10px 18px; border-radius: 10px;
+    text-decoration: none; white-space: nowrap;
+  }
+  .cta-btn:hover { background: var(--primary-dark); }
+  @media (max-width: 780px) {
+    nav { display: none; }
+  }
+</style>

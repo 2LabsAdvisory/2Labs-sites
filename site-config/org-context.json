@@ -1,0 +1,14 @@
+{
+  "clientId": "2labs",
+  "mission": "2Labs Advisory helps organizations strengthen cybersecurity, modernize operations, improve technology decision-making, and take advantage of practical AI solutions — so technology supports their mission instead of creating more work.",
+  "offerings": [
+    "Cybersecurity advisory",
+    "Operations modernization",
+    "Technology decision-making support",
+    "AI Websites for Non-Profits"
+  ],
+  "audience": "Non-profits and mission-driven organizations that need pragmatic technology help without an in-house IT team.",
+  "primaryCta": "Book a Free Consultation",
+  "secondaryCta": "Explore Solutions",
+  "notes": "This is the pilot/dogfood site for the AI website builder itself. Treat edits conservatively — this is a live, real business site, not a test fixture."
+}

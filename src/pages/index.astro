@@ -1,0 +1,72 @@
+---
+// index.astro — CONTENT FILE. Safe for the AI edit endpoint to modify
+// based on client prompts (unlike Header.astro / Footer.astro).
+import BaseLayout from '../layouts/BaseLayout.astro';
+import org from '../../site-config/org-context.json';
+---
+
+<BaseLayout
+  title="Technology Solutions That Help Organizations Do More Good"
+  description={org.mission}
+>
+  <section class="hero">
+    <p class="eyebrow">2Labs Advisory</p>
+    <h1>
+      Technology Solutions That Help Organizations
+      <span class="accent">Do More Good</span>
+    </h1>
+    <p class="lede">Technology should support your mission, not create more work.</p>
+    <p class="body-copy">{org.mission}</p>
+    <div class="actions">
+      <a href="/contact" class="btn btn-primary">{org.primaryCta} →</a>
+      <a href="/solutions" class="btn btn-ghost">{org.secondaryCta}</a>
+    </div>
+  </section>
+
+  <section class="offerings">
+    <h2>What we help with</h2>
+    <div class="offering-grid">
+      {org.offerings.map((offering: string) => (
+        <div class="offering-card">
+          <p>{offering}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .hero {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 64px 24px 40px;
+  }
+  .eyebrow {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--primary-dark); margin: 0 0 12px;
+  }
+  h1 { font-size: 42px; line-height: 1.15; margin: 0 0 16px; }
+  .accent { color: var(--primary); }
+  .lede { font-size: 17px; color: var(--ink); margin: 0 0 8px; font-weight: 500; }
+  .body-copy { font-size: 15px; color: var(--ink-soft); line-height: 1.6; max-width: 640px; margin: 0 0 28px; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 13px 22px; border-radius: 10px;
+    font-weight: 600; font-size: 14px; text-decoration: none;
+  }
+  .btn-primary { background: var(--primary); color: var(--ink); }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+
+  .offerings { max-width: 1180px; margin: 0 auto; padding: 24px 24px 80px; }
+  .offerings h2 { font-size: 22px; margin: 0 0 20px; }
+  .offering-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .offering-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; font-size: 14px; font-weight: 500;
+  }
+</style>
