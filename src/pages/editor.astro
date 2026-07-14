@@ -1,0 +1,401 @@
+---
+// editor.astro — the client editing UI (chat right / live preview left),
+// wired to POST /api/edit-site. Phase 0: single client (2Labs), single page
+// (the homepage). Served same-origin as the API so no CORS is needed.
+//
+// NOTE (Phase 0): this route is UNAUTHENTICATED. Client OTP login (PassCard)
+// is a later step per the project brief. Do not treat /editor as private yet.
+import brand from '../../site-config/brand.json';
+import org from '../../site-config/org-context.json';
+
+// The staging preview environment this editor previews and edits. Every
+// /api/edit-site call commits to the `staging` branch regardless of which
+// origin serves this page, so the editor works from production or staging.
+const STAGING_URL = 'https://red-hill-0fb2bdf10-staging.centralus.7.azurestaticapps.net';
+// "Publish" = merge staging -> main. Until that's wired as an endpoint, the
+// button sends the user to GitHub's compare view to open the merge PR.
+const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main...staging';
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>{brand.orgName} — Site Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint:rgba(245,159,10,0.08); --amber-tint-strong:#FFFBEB;
+    --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC;
+    --green:#2F8558; --green-bg:#EAF6EF; --red:#C0392B; --red-bg:#FBEAE8;
+    --radius:14px; --shadow:0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+  h1,h2,h3,.display{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0;
+  }
+  .topbar-left{ display:flex; align-items:center; gap:14px; }
+  .brand-mark{
+    width:30px;height:30px;border-radius:50%; background:#F6EDE1;
+    display:flex;align-items:center;justify-content:center; overflow:hidden; flex-shrink:0;
+  }
+  .brand-mark svg{ width:19px; height:19px; }
+  .site-meta{ line-height:1.25; }
+  .site-name{ font-weight:700; font-size:14.5px; }
+  .site-status{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-soft); }
+  .status-dot{ width:6px;height:6px;border-radius:50%; background:var(--amber); }
+
+  .topbar-right{ display:flex; align-items:center; gap:10px; }
+  .btn{
+    border:none; border-radius:9px; padding:9px 16px; font-family:'Inter',sans-serif;
+    font-weight:600; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+  }
+  .btn-ghost{ background:var(--bg); color:var(--ink); border:1px solid var(--border); }
+  .btn-primary{ background:var(--amber); color:var(--ink); }
+  .btn-primary:hover{ background:var(--amber-dark); }
+  .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
+
+  .main{ flex:1; display:flex; min-height:0; }
+
+  .preview-col{ flex:1; display:flex; flex-direction:column; min-width:0; background:var(--bg); padding:18px 20px; }
+  .preview-toolbar{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .preview-pages{ display:flex; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:3px; }
+  .preview-pages button{
+    border:none; background:transparent; padding:6px 12px; border-radius:7px;
+    font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer;
+  }
+  .preview-pages button.active{ background:var(--ink); color:#fff; }
+  .preview-pages button:disabled{ opacity:.5; cursor:not-allowed; }
+  .preview-controls{ display:flex; align-items:center; gap:10px; }
+  .refresh-btn{
+    width:32px;height:32px;border-radius:8px;border:1px solid var(--border);
+    background:var(--surface); color:var(--ink-soft); cursor:pointer; font-size:14px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .refresh-btn:hover{ color:var(--ink); }
+  .viewport-toggle{ display:flex; gap:6px; }
+  .viewport-toggle button{
+    width:32px;height:32px; border-radius:8px; border:1px solid var(--border);
+    background:var(--surface); color:var(--ink-soft); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:14px;
+  }
+  .viewport-toggle button.active{ background:var(--ink); color:var(--amber); border-color:var(--ink); }
+
+  .preview-stage{ flex:1; display:flex; align-items:stretch; justify-content:center; overflow:hidden; padding-bottom:10px; }
+  .preview-frame{
+    width:100%; max-width:100%; display:flex; flex-direction:column;
+    background:#fff; border-radius:12px; overflow:hidden; box-shadow:var(--shadow);
+    border:1px solid var(--border); transition:max-width .25s ease;
+  }
+  .preview-frame.tablet{ max-width:768px; }
+  .preview-frame.mobile{ max-width:390px; }
+  .preview-chrome{ background:#EFEDEA; padding:8px 12px; display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .preview-chrome span{ width:8px;height:8px;border-radius:50%; background:#D6D1CA; }
+  .preview-url{ margin-left:6px; background:#fff; border-radius:6px; padding:3px 10px; font-size:10.5px; color:var(--ink-soft); flex:1; }
+  .preview-iframe{ flex:1; width:100%; border:none; background:#fff; }
+
+  .chat-col{ width:380px; flex-shrink:0; display:flex; flex-direction:column; background:var(--surface); border-left:1px solid var(--border); min-height:0; }
+  .chat-head{ padding:16px 18px; border-bottom:1px solid var(--border); }
+  .chat-head h3{ font-size:14.5px; margin:0 0 3px; }
+  .chat-head p{ font-size:12px; color:var(--ink-soft); margin:0; }
+
+  .chat-body{ flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:16px; }
+  .msg{ max-width:88%; }
+  .msg.user{ align-self:flex-end; }
+  .msg.assistant{ align-self:flex-start; }
+  .bubble{ padding:10px 13px; border-radius:12px; font-size:13.5px; line-height:1.45; white-space:pre-wrap; }
+  .msg.user .bubble{ background:var(--ink); color:#fff; border-bottom-right-radius:4px; }
+  .msg.assistant .bubble{ background:var(--bg); border:1px solid var(--border); border-bottom-left-radius:4px; }
+  .msg.assistant .bubble.error{ background:var(--red-bg); border-color:#EBC9C4; color:var(--red); }
+  .msg-time{ font-size:10.5px; color:var(--ink-soft); margin-top:4px; }
+  .msg.user .msg-time{ text-align:right; }
+
+  .diff-chip{ display:flex; align-items:center; gap:8px; margin-top:8px; padding:8px 10px; border-radius:9px; background:var(--amber-tint-strong); border:1px solid #F3E3B8; font-size:12px; }
+  .diff-chip .dot{ width:6px;height:6px;border-radius:50%; background:var(--amber-dark); flex-shrink:0; }
+  .diff-chip.done{ background:var(--green-bg); border-color:#CFE9D8; }
+  .diff-chip.done .dot{ background:var(--green); }
+  .diff-chip b{ font-weight:600; }
+
+  .building{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); margin-top:8px; }
+  .building .spinner{ width:12px;height:12px;border-radius:50%; border:2px solid var(--border); border-top-color:var(--amber); animation:spin 0.8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .confirm-actions{ display:flex; gap:8px; margin-top:10px; }
+  .confirm-actions button{ border-radius:8px; padding:7px 12px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid var(--border); }
+  .confirm-yes{ background:var(--amber); color:var(--ink); border-color:var(--amber); }
+  .confirm-no{ background:var(--surface); color:var(--ink-soft); }
+
+  .suggestion-row{ display:flex; gap:8px; flex-wrap:wrap; padding:0 18px 12px; }
+  .suggestion-chip{ border:1px solid var(--border); background:var(--surface); border-radius:100px; padding:6px 12px; font-size:11.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; white-space:nowrap; }
+  .suggestion-chip:hover{ border-color:var(--amber); color:var(--amber-dark); }
+
+  .chat-input{ border-top:1px solid var(--border); padding:12px 14px; display:flex; align-items:flex-end; gap:8px; flex-shrink:0; }
+  .chat-input textarea{
+    flex:1; resize:none; border:1px solid var(--border); border-radius:10px; padding:10px 12px;
+    font-family:'Inter',sans-serif; font-size:13.5px; color:var(--ink); background:var(--bg); min-height:40px; max-height:120px;
+  }
+  .chat-input textarea:focus{ outline:none; border-color:var(--amber); }
+  .chat-input textarea:disabled{ opacity:.6; }
+  .send-btn{
+    width:38px;height:38px;border-radius:10px; border:none; background:var(--ink); color:var(--amber);
+    cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;
+  }
+  .send-btn:disabled{ opacity:.5; cursor:not-allowed; }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="brand-mark">
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/>
+        </svg>
+      </div>
+      <div class="site-meta">
+        <div class="site-name">{brand.domain}</div>
+        <div class="site-status"><span class="status-dot"></span> Editing staging</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <a class="btn btn-ghost" id="viewStaging" href={STAGING_URL} target="_blank" rel="noopener">View Staging ↗</a>
+      <a class="btn btn-primary" id="publishBtn" href={PUBLISH_URL} target="_blank" rel="noopener" title="Opens a GitHub compare view to merge staging → main (production).">Publish Changes</a>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <div class="preview-col">
+      <div class="preview-toolbar">
+        <div class="preview-pages">
+          <button class="active" data-path="/">Home</button>
+          <button disabled title="More pages come in a later phase">Programs</button>
+          <button disabled title="More pages come in a later phase">About</button>
+          <button disabled title="More pages come in a later phase">Contact</button>
+        </div>
+        <div class="preview-controls">
+          <button class="refresh-btn" id="refreshBtn" title="Refresh preview">⟳</button>
+          <div class="viewport-toggle">
+            <button class="active" data-vp="desktop" title="Desktop">🖥</button>
+            <button data-vp="tablet" title="Tablet">▤</button>
+            <button data-vp="mobile" title="Mobile">📱</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-stage">
+        <div class="preview-frame" id="previewFrame">
+          <div class="preview-chrome"><span></span><span></span><span></span><div class="preview-url">{brand.domain} — staging</div></div>
+          <iframe class="preview-iframe" id="previewIframe" title="Staging preview" src={STAGING_URL}></iframe>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-col">
+      <div class="chat-head">
+        <h3>Edit with AI</h3>
+        <p>Describe a change — I'll update the staging site.</p>
+      </div>
+
+      <div class="chat-body" id="chatBody">
+        <div class="msg assistant">
+          <div class="bubble">Hi 👋 What would you like to update on {brand.domain}? Describe a change to the homepage and I'll stage it for review.</div>
+        </div>
+      </div>
+
+      <div class="suggestion-row" id="suggestionRow">
+        <div class="suggestion-chip">Reword the hero subheading</div>
+        <div class="suggestion-chip">Add a short section about our AI websites for non-profits</div>
+      </div>
+
+      <div class="chat-input">
+        <textarea id="promptInput" placeholder="Describe a change, e.g. &quot;Update our hero subheading&quot;"></textarea>
+        <button class="send-btn" id="sendBtn" title="Send">↑</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script define:vars={{ STAGING_URL }}>
+    const chatBody = document.getElementById('chatBody');
+    const input = document.getElementById('promptInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const iframe = document.getElementById('previewIframe');
+    const previewFrame = document.getElementById('previewFrame');
+    let busy = false;
+
+    const timeNow = () =>
+      new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+    function scrollDown() { chatBody.scrollTop = chatBody.scrollHeight; }
+
+    function addUser(text) {
+      const el = document.createElement('div');
+      el.className = 'msg user';
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      b.textContent = text;                 // textContent = no HTML injection
+      el.appendChild(b);
+      const t = document.createElement('div');
+      t.className = 'msg-time';
+      t.textContent = timeNow();
+      el.appendChild(t);
+      chatBody.appendChild(el);
+      scrollDown();
+    }
+
+    // Returns the message element so callers can append chips/controls to it.
+    function addAssistant(text, { error = false, time = timeNow() } = {}) {
+      const el = document.createElement('div');
+      el.className = 'msg assistant';
+      const b = document.createElement('div');
+      b.className = 'bubble' + (error ? ' error' : '');
+      b.textContent = text;
+      el.appendChild(b);
+      if (time) {
+        const t = document.createElement('div');
+        t.className = 'msg-time';
+        t.textContent = time;
+        el.appendChild(t);
+      }
+      chatBody.appendChild(el);
+      scrollDown();
+      return { el, bubble: b };
+    }
+
+    function reloadPreview() {
+      iframe.src = STAGING_URL + '/?t=' + Date.now();
+    }
+
+    // After a staged edit, the GitHub Action rebuilds the staging site (~1–2
+    // min). We can't read the cross-origin staging page from here, so we show
+    // a build indicator and reload the iframe on a schedule. (A real build-
+    // status poll via a same-origin /api endpoint is a Phase 1 improvement.)
+    function trackBuild(bubble) {
+      const building = document.createElement('div');
+      building.className = 'building';
+      building.innerHTML = '<span class="spinner"></span> Rebuilding staging site…';
+      bubble.appendChild(building);
+      scrollDown();
+
+      const reloads = [45000, 90000];
+      reloads.forEach((ms) => setTimeout(reloadPreview, ms));
+      setTimeout(() => {
+        building.remove();
+        const chip = document.createElement('div');
+        chip.className = 'diff-chip done';
+        chip.innerHTML = '<span class="dot"></span> <span><b>Live on staging.</b> Preview updated.</span>';
+        bubble.appendChild(chip);
+        reloadPreview();
+        scrollDown();
+      }, reloads[reloads.length - 1] + 2000);
+    }
+
+    function setBusy(state) {
+      busy = state;
+      sendBtn.disabled = state;
+      input.disabled = state;
+    }
+
+    async function submit(prompt, { confirmStructural = false, echo = true } = {}) {
+      if (echo) addUser(prompt);
+      setBusy(true);
+      const thinking = addAssistant('Working on it…', { time: '' });
+      thinking.bubble.innerHTML = '<span class="building"><span class="spinner"></span> Thinking…</span>';
+      try {
+        const res = await fetch('/api/edit-site', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, confirmStructural }),
+        });
+        const data = await res.json().catch(() => ({}));
+        thinking.el.remove();
+
+        if (!res.ok) {
+          addAssistant(data.error || data.detail || `Something went wrong (HTTP ${res.status}).`, { error: true });
+          return;
+        }
+
+        if (data.status === 'needs_confirmation') {
+          const m = addAssistant(data.message || 'This change may affect site-wide structure. Proceed anyway?');
+          const actions = document.createElement('div');
+          actions.className = 'confirm-actions';
+          const yes = document.createElement('button');
+          yes.className = 'confirm-yes'; yes.textContent = 'Yes, go ahead';
+          const no = document.createElement('button');
+          no.className = 'confirm-no'; no.textContent = 'Cancel';
+          yes.onclick = () => { actions.remove(); submit(prompt, { confirmStructural: true, echo: false }); };
+          no.onclick = () => { actions.remove(); };
+          m.bubble.appendChild(actions);
+          scrollDown();
+          return;
+        }
+
+        if (data.status === 'no_change') {
+          addAssistant('That didn’t change anything on the page — the content already matches. Try describing the change differently.');
+          return;
+        }
+
+        if (data.status === 'staged') {
+          const m = addAssistant('Done — staged that change to the homepage.', { time: timeNow() + ' · Staged' });
+          trackBuild(m.bubble);
+          return;
+        }
+
+        addAssistant('Unexpected response from the server.', { error: true });
+      } catch (err) {
+        thinking.el.remove();
+        addAssistant('Could not reach the editor service. Check your connection and try again.', { error: true });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function send() {
+      const text = input.value.trim();
+      if (!text || busy) return;
+      input.value = '';
+      submit(text);
+    }
+
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+
+    // Suggestion chips fill the input.
+    document.getElementById('suggestionRow').addEventListener('click', (e) => {
+      const chip = e.target.closest('.suggestion-chip');
+      if (chip) { input.value = chip.textContent.trim(); input.focus(); }
+    });
+
+    // Viewport toggle.
+    document.querySelectorAll('.viewport-toggle button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.viewport-toggle button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        previewFrame.classList.remove('tablet', 'mobile');
+        const vp = btn.dataset.vp;
+        if (vp !== 'desktop') previewFrame.classList.add(vp);
+      });
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', reloadPreview);
+  </script>
+
+</body>
+</html>
