@@ -48,6 +48,12 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
     padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0;
   }
   .topbar-left{ display:flex; align-items:center; gap:14px; }
+  .back-btn{
+    width:32px;height:32px;border-radius:50%; border:1px solid var(--border); background:var(--surface);
+    display:flex;align-items:center;justify-content:center; color:var(--ink-soft); cursor:pointer;
+    font-size:15px; flex-shrink:0; text-decoration:none;
+  }
+  .back-btn:hover{ color:var(--ink); border-color:var(--ink-soft); }
   .brand-mark{
     width:30px;height:30px;border-radius:50%; background:#F6EDE1;
     display:flex;align-items:center;justify-content:center; overflow:hidden; flex-shrink:0;
@@ -160,6 +166,7 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
 
   <div class="topbar">
     <div class="topbar-left">
+      <a class="back-btn" href="/dashboard" title="Back to dashboard" aria-label="Back to dashboard">←</a>
       <div class="brand-mark">
         <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2" stroke-linejoin="round"/>
