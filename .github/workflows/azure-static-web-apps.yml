@@ -27,9 +27,11 @@ jobs:
           app_location: "/"
           api_location: "api"
           output_location: "dist"
-          # main -> production environment
-          # staging (or any PR/branch) -> its own preview environment URL,
-          # which is exactly the "testing area" the client reviews before publish
+          # main -> production environment (empty deployment_environment).
+          # staging -> a stable named preview environment ("staging"), which is
+          # the "testing area" the client reviews before publish. Without this,
+          # every branch push overwrites the single production environment.
+          deployment_environment: ${{ github.ref_name == 'staging' && 'staging' || '' }}
 
   close_pull_request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
