@@ -6,7 +6,7 @@
  * first real end-to-end test.
  */
 const assert = require('node:assert');
-const { stripCodeFences, validateAstroOutput, isLikelyStructuralRequest } = require('./index.js');
+const { stripCodeFences, validateAstroOutput, isLikelyStructuralRequest } = require('../edit-site/index.js');
 
 // A minimal but realistic current index.astro, used as the "before" content.
 const CURRENT = `---

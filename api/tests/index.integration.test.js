@@ -66,7 +66,7 @@ Object.assign(process.env, {
   GITHUB_OWNER: '2LabsAdvisory', GITHUB_REPO: '2Labs-sites',
 });
 
-const handler = require(path.join(__dirname, 'index.js'));
+const handler = require(path.join(__dirname, '..', 'edit-site', 'index.js'));
 
 // ---- Test harness ----------------------------------------------------------
 function makeContext() {
