@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * auth/request-code — proxies to PassCard's request-code, but only for
- * allowlisted emails. Non-allowlisted (or invalid) emails get the same
- * generic response without a code being sent or an account provisioned, so
- * the endpoint doesn't reveal who is allowed.
+ * auth/request-code — proxies to the shared 2Labs OTP service (app=
+ * 2labs-websites), but only for allowlisted emails. Non-allowlisted (or
+ * invalid) emails get the same generic response without a code being sent or
+ * an account provisioned, so the endpoint doesn't reveal who is allowed.
  */
 const { isEmailAllowed, sharedAuthFetch, appKey } = require('../shared/auth');
 

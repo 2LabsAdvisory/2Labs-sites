@@ -1,10 +1,11 @@
 'use strict';
 
 /**
- * auth/verify-code — proxies to PassCard's verify-code for allowlisted emails
- * and passes through the resulting { success, user, token } on success. The
- * token is a PassCard server-side session token the client stores and sends
- * as a bearer on subsequent calls (validated by /api/edit-site).
+ * auth/verify-code — proxies to the shared 2Labs OTP service (app=
+ * 2labs-websites) for allowlisted emails and passes through the resulting
+ * { success, user, token } on success. The token is a shared-auth server-side
+ * session token the client stores and sends on subsequent calls (validated by
+ * /api/edit-site via the shared /auth/me).
  */
 const { isEmailAllowed, sharedAuthFetch, appKey } = require('../shared/auth');
 
