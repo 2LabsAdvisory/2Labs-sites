@@ -38,10 +38,21 @@ async function passcardFetch(path, options) {
   return fetch(`${passcardBaseUrl()}${path}`, options);
 }
 
-/** Extract a bearer token from a classic-model Azure Functions request. */
+/**
+ * Extract the session token from a classic-model Azure Functions request.
+ * Azure Static Web Apps strips the standard `Authorization` header before
+ * forwarding to managed functions (it reserves that header for its own auth),
+ * so the client also sends the token in a custom `x-2labs-session` header,
+ * which SWA passes through. We read the custom header first, then fall back to
+ * a bearer Authorization header (works for local dev / non-SWA callers).
+ */
 function getBearerToken(req) {
-  const header = (req && req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
-  return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : null;
+  const headers = (req && req.headers) || {};
+  const custom = headers['x-2labs-session'] || headers['X-2Labs-Session'];
+  if (custom && String(custom).trim()) return String(custom).trim();
+
+  const auth = headers.authorization || headers.Authorization || '';
+  return auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
 }
 
 /**

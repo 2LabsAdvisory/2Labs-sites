@@ -334,7 +334,13 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
       try {
         const res = await fetch('/api/edit-site', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (authToken() || '') },
+          headers: {
+            'Content-Type': 'application/json',
+            // Azure Static Web Apps strips Authorization from managed-function
+            // requests, so the session token goes in a custom header it forwards.
+            'x-2labs-session': authToken() || '',
+            'Authorization': 'Bearer ' + (authToken() || ''),
+          },
           body: JSON.stringify({ prompt, confirmStructural }),
         });
         const data = await res.json().catch(() => ({}));
