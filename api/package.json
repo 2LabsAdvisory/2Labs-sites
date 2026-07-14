@@ -6,7 +6,8 @@
   "main": "dist/*/index.js",
   "scripts": {
     "build": "echo \"no build step yet (plain JS functions)\"",
-    "start": "func start"
+    "start": "func start",
+    "test": "node edit-site/index.test.js && node edit-site/index.integration.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
