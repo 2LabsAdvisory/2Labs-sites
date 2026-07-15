@@ -25,7 +25,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { getDraftFile, setDraftFile } = require('../lib/draftStore');
+const { getDraftFile, setDraftFile, setUndoFile } = require('../lib/draftStore');
 const { renderDraft } = require('../lib/renderDraft');
 const { siteRoot, brand, org, editPolicy } = require('../lib/siteConfig');
 
@@ -129,6 +129,8 @@ module.exports = async function (context, req) {
       throw new Error(`render: ${e.message}`);
     }
     try {
+      // Snapshot the pre-edit state for one-level "Revert last change", then save.
+      await setUndoFile(CLIENT_ID, TARGET_FILE, currentContent);
       await setDraftFile(CLIENT_ID, TARGET_FILE, newContent);
     } catch (e) {
       throw new Error(`draft-save: ${e.message}`);

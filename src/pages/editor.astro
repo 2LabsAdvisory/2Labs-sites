@@ -1,12 +1,10 @@
 ---
 // editor.astro — client editing UI (chat right / live preview left).
-// New model: /api/edit-site saves a Blob-Storage draft and returns rendered
-// HTML (shown here via iframe srcdoc — no staging branch). Publish commits the
-// draft to main via /api/publish-site; History uses /api/list-versions +
-// /api/restore-version. Gated behind the shared-auth session.
+// /api/edit-site saves a Blob draft and returns rendered HTML (shown via
+// iframe srcdoc). Revert undoes the last edit; Publish commits to main;
+// History (branded popup) uses list-versions + restore-version.
 import brand from '../../site-config/brand.json';
 
-// Live production site (2labs.ca DNS isn't cut over yet).
 const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
 ---
 
@@ -16,12 +14,12 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex, nofollow" />
-<!-- Auth gate (runs before render to avoid a flash of the editor). -->
 <script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
 <title>{brand.orgName} — Site Editor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<style>
+<!-- is:global so JS-created elements (messages, chips, history rows) are styled too. -->
+<style is:global>
   :root{
     --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint:rgba(245,159,10,0.08); --amber-tint-strong:#FFFBEB;
     --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC;
@@ -36,24 +34,13 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     display:flex; flex-direction:column; height:100vh; overflow:hidden;
   }
   h1,h2,h3,.display{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
-  .mono{ font-family:'IBM Plex Mono',monospace; }
+  .dog{ width:100%; height:100%; display:block; }
 
-  .topbar{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0;
-  }
+  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
   .topbar-left{ display:flex; align-items:center; gap:14px; }
-  .back-btn{
-    width:32px;height:32px;border-radius:50%; border:1px solid var(--border); background:var(--surface);
-    display:flex;align-items:center;justify-content:center; color:var(--ink-soft); cursor:pointer;
-    font-size:15px; flex-shrink:0; text-decoration:none;
-  }
+  .back-btn{ width:32px;height:32px;border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex;align-items:center;justify-content:center; color:var(--ink-soft); cursor:pointer; font-size:15px; flex-shrink:0; text-decoration:none; }
   .back-btn:hover{ color:var(--ink); border-color:var(--ink-soft); }
-  .brand-mark{
-    width:30px;height:30px;border-radius:50%; background:#F6EDE1;
-    display:flex;align-items:center;justify-content:center; overflow:hidden; flex-shrink:0;
-  }
-  .brand-mark svg{ width:19px; height:19px; }
+  .brand-mark{ width:30px;height:30px;border-radius:50%; background:#F6EDE1; display:flex;align-items:center;justify-content:center; overflow:hidden; flex-shrink:0; padding:5px; }
   .site-meta{ line-height:1.25; }
   .site-name{ font-weight:700; font-size:14.5px; }
   .site-status{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-soft); }
@@ -61,14 +48,12 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   .status-dot.clean{ background:var(--green); }
 
   .topbar-right{ display:flex; align-items:center; gap:10px; }
-  .btn{
-    border:none; border-radius:9px; padding:9px 16px; font-family:'Inter',sans-serif;
-    font-weight:600; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; text-decoration:none;
-  }
+  .btn{ border:none; border-radius:9px; padding:9px 16px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; text-decoration:none; }
   .btn-ghost{ background:var(--bg); color:var(--ink); border:1px solid var(--border); }
+  .btn-ghost:hover:not(:disabled){ border-color:var(--ink-soft); }
   .btn-primary{ background:var(--amber); color:var(--ink); }
-  .btn-primary:hover{ background:var(--amber-dark); }
-  .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
+  .btn-primary:hover:not(:disabled){ background:var(--amber-dark); }
+  .btn:disabled{ opacity:0.45; cursor:not-allowed; }
   .btn .spin{ width:13px;height:13px;border-radius:50%; border:2px solid rgba(31,36,46,0.3); border-top-color:var(--ink); animation:spin .8s linear infinite; }
 
   .main{ flex:1; display:flex; min-height:0; }
@@ -76,33 +61,18 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   .preview-col{ flex:1; display:flex; flex-direction:column; min-width:0; background:var(--bg); padding:18px 20px; }
   .preview-toolbar{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
   .preview-pages{ display:flex; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:3px; }
-  .preview-pages button{
-    border:none; background:transparent; padding:6px 12px; border-radius:7px;
-    font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer;
-  }
+  .preview-pages button{ border:none; background:transparent; padding:6px 12px; border-radius:7px; font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; }
   .preview-pages button.active{ background:var(--ink); color:#fff; }
   .preview-pages button:disabled{ opacity:.5; cursor:not-allowed; }
   .preview-controls{ display:flex; align-items:center; gap:10px; }
-  .refresh-btn{
-    width:32px;height:32px;border-radius:8px;border:1px solid var(--border);
-    background:var(--surface); color:var(--ink-soft); cursor:pointer; font-size:14px;
-    display:flex;align-items:center;justify-content:center;
-  }
+  .refresh-btn{ width:32px;height:32px;border-radius:8px;border:1px solid var(--border); background:var(--surface); color:var(--ink-soft); cursor:pointer; font-size:14px; display:flex;align-items:center;justify-content:center; }
   .refresh-btn:hover{ color:var(--ink); }
   .viewport-toggle{ display:flex; gap:6px; }
-  .viewport-toggle button{
-    width:32px;height:32px; border-radius:8px; border:1px solid var(--border);
-    background:var(--surface); color:var(--ink-soft); cursor:pointer;
-    display:flex; align-items:center; justify-content:center; font-size:14px;
-  }
+  .viewport-toggle button{ width:32px;height:32px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--ink-soft); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; }
   .viewport-toggle button.active{ background:var(--ink); color:var(--amber); border-color:var(--ink); }
 
   .preview-stage{ flex:1; display:flex; align-items:stretch; justify-content:center; overflow:hidden; padding-bottom:10px; }
-  .preview-frame{
-    width:100%; max-width:100%; display:flex; flex-direction:column;
-    background:#fff; border-radius:12px; overflow:hidden; box-shadow:var(--shadow);
-    border:1px solid var(--border); transition:max-width .25s ease;
-  }
+  .preview-frame{ width:100%; max-width:100%; display:flex; flex-direction:column; background:#fff; border-radius:12px; overflow:hidden; box-shadow:var(--shadow); border:1px solid var(--border); transition:max-width .25s ease; }
   .preview-frame.tablet{ max-width:768px; }
   .preview-frame.mobile{ max-width:390px; }
   .preview-chrome{ background:#EFEDEA; padding:8px 12px; display:flex; align-items:center; gap:6px; flex-shrink:0; }
@@ -110,66 +80,63 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   .preview-url{ margin-left:6px; background:#fff; border-radius:6px; padding:3px 10px; font-size:10.5px; color:var(--ink-soft); flex:1; }
   .preview-iframe{ flex:1; width:100%; border:none; background:#fff; }
 
-  .chat-col{ width:380px; flex-shrink:0; display:flex; flex-direction:column; background:var(--surface); border-left:1px solid var(--border); min-height:0; }
-  .chat-head{ padding:16px 18px; border-bottom:1px solid var(--border); }
-  .chat-head h3{ font-size:14.5px; margin:0 0 3px; }
-  .chat-head p{ font-size:12px; color:var(--ink-soft); margin:0; }
+  /* ---- Branded chat ---- */
+  .chat-col{ width:390px; flex-shrink:0; display:flex; flex-direction:column; background:var(--surface); border-left:1px solid var(--border); min-height:0; }
+  .chat-head{ padding:15px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:11px; background:linear-gradient(180deg, var(--amber-tint-strong), var(--surface)); }
+  .chat-head .badge{ width:34px;height:34px;border-radius:50%; background:#F6EDE1; display:flex;align-items:center;justify-content:center; flex-shrink:0; padding:6px; }
+  .chat-head h3{ font-size:14.5px; margin:0; }
+  .chat-head p{ font-size:12px; color:var(--ink-soft); margin:2px 0 0; }
 
-  .chat-body{ flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:16px; }
-  .msg{ max-width:88%; }
-  .msg.user{ align-self:flex-end; }
+  .chat-body{ flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
+  .msg{ max-width:90%; display:flex; gap:8px; }
+  .msg.user{ align-self:flex-end; flex-direction:row-reverse; }
   .msg.assistant{ align-self:flex-start; }
-  .bubble{ padding:10px 13px; border-radius:12px; font-size:13.5px; line-height:1.45; white-space:pre-wrap; }
-  .msg.user .bubble{ background:var(--ink); color:#fff; border-bottom-right-radius:4px; }
-  .msg.assistant .bubble{ background:var(--bg); border:1px solid var(--border); border-bottom-left-radius:4px; }
+  .msg .avatar{ width:24px;height:24px;border-radius:50%; background:#F6EDE1; flex-shrink:0; display:flex;align-items:center;justify-content:center; padding:4px; margin-top:2px; }
+  .msg.user .avatar{ background:var(--ink); color:#fff; font-size:11px; font-weight:700; padding:0; }
+  .msg .col{ display:flex; flex-direction:column; min-width:0; }
+  .bubble{ padding:10px 13px; border-radius:14px; font-size:13.5px; line-height:1.5; white-space:pre-wrap; word-wrap:break-word; }
+  .msg.user .bubble{ background:var(--ink); color:#fff; border-top-right-radius:5px; }
+  .msg.assistant .bubble{ background:var(--bg); border:1px solid var(--border); border-top-left-radius:5px; }
   .msg.assistant .bubble.error{ background:var(--red-bg); border-color:#EBC9C4; color:var(--red); }
   .msg-time{ font-size:10.5px; color:var(--ink-soft); margin-top:4px; }
   .msg.user .msg-time{ text-align:right; }
 
-  .diff-chip{ display:flex; align-items:center; gap:8px; margin-top:8px; padding:8px 10px; border-radius:9px; background:var(--green-bg); border:1px solid #CFE9D8; font-size:12px; }
+  .diff-chip{ display:flex; align-items:center; gap:8px; margin-top:9px; padding:8px 10px; border-radius:9px; background:var(--green-bg); border:1px solid #CFE9D8; font-size:12px; }
   .diff-chip .dot{ width:6px;height:6px;border-radius:50%; background:var(--green); flex-shrink:0; }
   .diff-chip b{ font-weight:600; }
-
-  .building{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); margin-top:8px; }
+  .building{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); }
   .building .spinner{ width:12px;height:12px;border-radius:50%; border:2px solid var(--border); border-top-color:var(--amber); animation:spin 0.8s linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
-
-  .confirm-actions{ display:flex; gap:8px; margin-top:10px; }
-  .confirm-actions button{ border-radius:8px; padding:7px 12px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid var(--border); }
-  .confirm-yes{ background:var(--amber); color:var(--ink); border-color:var(--amber); }
-  .confirm-no{ background:var(--surface); color:var(--ink-soft); }
 
   .suggestion-row{ display:flex; gap:8px; flex-wrap:wrap; padding:0 18px 12px; }
   .suggestion-chip{ border:1px solid var(--border); background:var(--surface); border-radius:100px; padding:6px 12px; font-size:11.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; white-space:nowrap; }
   .suggestion-chip:hover{ border-color:var(--amber); color:var(--amber-dark); }
 
   .chat-input{ border-top:1px solid var(--border); padding:12px 14px; display:flex; align-items:flex-end; gap:8px; flex-shrink:0; }
-  .chat-input textarea{
-    flex:1; resize:none; border:1px solid var(--border); border-radius:10px; padding:10px 12px;
-    font-family:'Inter',sans-serif; font-size:13.5px; color:var(--ink); background:var(--bg); min-height:40px; max-height:120px;
-  }
+  .chat-input textarea{ flex:1; resize:none; border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-family:'Inter',sans-serif; font-size:13.5px; color:var(--ink); background:var(--bg); min-height:40px; max-height:120px; }
   .chat-input textarea:focus{ outline:none; border-color:var(--amber); }
   .chat-input textarea:disabled{ opacity:.6; }
-  .send-btn{
-    width:38px;height:38px;border-radius:10px; border:none; background:var(--ink); color:var(--amber);
-    cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;
-  }
+  .send-btn{ width:38px;height:38px;border-radius:10px; border:none; background:var(--ink); color:var(--amber); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
   .send-btn:disabled{ opacity:.5; cursor:not-allowed; }
 
-  /* History drawer */
-  .drawer-overlay{ position:fixed; inset:0; background:rgba(31,36,46,0.35); display:none; z-index:50; }
-  .drawer-overlay.open{ display:block; }
-  .drawer{ position:absolute; top:0; right:0; height:100%; width:400px; max-width:90vw; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; }
-  .drawer-head{ padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  .drawer-head h3{ font-size:15px; margin:0; }
-  .drawer-close{ border:none; background:transparent; font-size:18px; color:var(--ink-soft); cursor:pointer; }
-  .drawer-body{ flex:1; overflow-y:auto; }
-  .drawer-empty{ padding:24px 18px; font-size:13px; color:var(--ink-soft); }
-  .version-item{ padding:13px 18px; border-bottom:1px solid var(--border); }
+  /* ---- History popup (branded modal) ---- */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(31,36,46,0.45); display:none; z-index:60; align-items:center; justify-content:center; padding:24px; }
+  .modal-overlay.open{ display:flex; }
+  .modal{ width:100%; max-width:520px; max-height:80vh; background:var(--surface); border-radius:18px; box-shadow:0 24px 60px rgba(15,23,42,0.28); display:flex; flex-direction:column; overflow:hidden; }
+  .modal-head{ display:flex; align-items:center; gap:11px; padding:18px 20px; border-bottom:1px solid var(--border); background:linear-gradient(180deg, var(--amber-tint-strong), var(--surface)); }
+  .modal-head .badge{ width:32px;height:32px;border-radius:50%; background:#F6EDE1; display:flex;align-items:center;justify-content:center; padding:6px; flex-shrink:0; }
+  .modal-head h3{ font-size:16px; margin:0; flex:1; }
+  .modal-head p{ font-size:11.5px; color:var(--ink-soft); margin:2px 0 0; }
+  .modal-close{ border:none; background:var(--bg); border:1px solid var(--border); width:30px;height:30px;border-radius:8px; color:var(--ink-soft); cursor:pointer; font-size:14px; }
+  .modal-close:hover{ color:var(--ink); }
+  .modal-body{ flex:1; overflow-y:auto; }
+  .modal-empty{ padding:28px 20px; font-size:13px; color:var(--ink-soft); text-align:center; }
+  .version-item{ padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .version-item:last-child{ border-bottom:none; }
   .version-msg{ font-size:13.5px; font-weight:500; }
   .version-meta{ font-size:11.5px; color:var(--ink-soft); margin-top:3px; }
-  .version-load{ margin-top:9px; border:1px solid var(--amber); color:var(--amber-dark); background:#fff; font-size:12px; font-weight:600; padding:5px 11px; border-radius:8px; cursor:pointer; }
-  .version-load:hover{ background:var(--amber); color:var(--ink); }
+  .version-load{ border:1px solid var(--amber); color:var(--amber-dark); background:#fff; font-size:12px; font-weight:600; padding:6px 12px; border-radius:8px; cursor:pointer; white-space:nowrap; flex-shrink:0; }
+  .version-load:hover:not(:disabled){ background:var(--amber); color:var(--ink); }
   .version-load:disabled{ opacity:.5; cursor:not-allowed; }
 </style>
 </head>
@@ -178,18 +145,14 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   <div class="topbar">
     <div class="topbar-left">
       <a class="back-btn" href="/dashboard" title="Back to dashboard" aria-label="Back to dashboard">←</a>
-      <div class="brand-mark">
-        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/>
-        </svg>
-      </div>
+      <div class="brand-mark"><svg class="dog" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg></div>
       <div class="site-meta">
         <div class="site-name">{brand.domain}</div>
         <div class="site-status"><span class="status-dot" id="statusDot"></span> <span id="statusText">Draft</span></div>
       </div>
     </div>
     <div class="topbar-right">
+      <button class="btn btn-ghost" id="revertBtn" disabled title="Undo the last change">↶ Revert</button>
       <button class="btn btn-ghost" id="historyBtn">History</button>
       <a class="btn btn-ghost" href={LIVE_URL} target="_blank" rel="noopener">View Live ↗</a>
       <button class="btn btn-primary" id="publishBtn" title="Publish your draft changes to the live site.">Publish Changes</button>
@@ -198,7 +161,6 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   </div>
 
   <div class="main">
-
     <div class="preview-col">
       <div class="preview-toolbar">
         <div class="preview-pages">
@@ -216,7 +178,6 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
           </div>
         </div>
       </div>
-
       <div class="preview-stage">
         <div class="preview-frame" id="previewFrame">
           <div class="preview-chrome"><span></span><span></span><span></span><div class="preview-url" id="previewUrl">{brand.domain} — live</div></div>
@@ -227,19 +188,18 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
 
     <div class="chat-col">
       <div class="chat-head">
-        <h3>Edit with AI</h3>
-        <p>Describe a change — I'll update your draft preview.</p>
-      </div>
-
-      <div class="chat-body" id="chatBody">
-        <div class="msg assistant">
-          <div class="bubble">Hi 👋 What would you like to update on {brand.domain}? Describe a change and I'll show it in the preview. When it looks right, hit <b>Publish Changes</b>.</div>
+        <div class="badge"><svg class="dog" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg></div>
+        <div>
+          <h3>Edit with 2Labs AI</h3>
+          <p>Describe a change — I'll update your draft.</p>
         </div>
       </div>
 
+      <div class="chat-body" id="chatBody"></div>
+
       <div class="suggestion-row" id="suggestionRow">
         <div class="suggestion-chip">Reword the hero subheading</div>
-        <div class="suggestion-chip">Add a short section about our AI websites for non-profits</div>
+        <div class="suggestion-chip">Add an interactive FAQ accordion</div>
       </div>
 
       <div class="chat-input">
@@ -247,26 +207,26 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
         <button class="send-btn" id="sendBtn" title="Send">↑</button>
       </div>
     </div>
-
   </div>
 
-  <!-- History drawer -->
-  <div class="drawer-overlay" id="historyOverlay">
-    <div class="drawer">
-      <div class="drawer-head">
-        <h3>Version history</h3>
-        <button class="drawer-close" id="historyClose" aria-label="Close">✕</button>
+  <!-- History popup -->
+  <div class="modal-overlay" id="historyOverlay">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="badge"><svg class="dog" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg></div>
+        <div style="flex:1"><h3>Version history</h3><p>Published versions of {brand.domain}</p></div>
+        <button class="modal-close" id="historyClose" aria-label="Close">✕</button>
       </div>
-      <div class="drawer-body" id="historyBody">
-        <div class="drawer-empty">Loading…</div>
-      </div>
+      <div class="modal-body" id="historyBody"><div class="modal-empty">Loading…</div></div>
     </div>
   </div>
 
-  <script define:vars={{ LIVE_URL }}>
+  <script define:vars={{ LIVE_URL, orgName: brand.orgName }}>
     const TOKEN_KEY = '2labs_sites_token';
-    function authToken() { return localStorage.getItem(TOKEN_KEY); }
-    function signOut() { localStorage.removeItem(TOKEN_KEY); location.replace('/login'); }
+    const authToken = () => localStorage.getItem(TOKEN_KEY);
+    const signOut = () => { localStorage.removeItem(TOKEN_KEY); location.replace('/login'); };
+    const DOG = '<svg class="dog" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="3" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg>';
+
     document.getElementById('signOut').addEventListener('click', signOut);
 
     const chatBody = document.getElementById('chatBody');
@@ -277,148 +237,99 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     const previewUrl = document.getElementById('previewUrl');
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
-    let busy = false;
-    let lastHtml = null;       // most recent rendered draft HTML (srcdoc)
-    let hasDraft = false;      // unpublished changes present?
+    const revertBtn = document.getElementById('revertBtn');
+    let busy = false, lastHtml = null;
 
     const timeNow = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    function scrollDown() { chatBody.scrollTop = chatBody.scrollHeight; }
+    const scrollDown = () => { chatBody.scrollTop = chatBody.scrollHeight; };
 
-    // Session token goes in a custom header SWA forwards (it strips Authorization).
     function apiFetch(path, opts = {}) {
-      return fetch(path, {
-        ...opts,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-2labs-session': authToken() || '',
-          'Authorization': 'Bearer ' + (authToken() || ''),
-          ...(opts.headers || {}),
-        },
-      });
+      return fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-2labs-session': authToken() || '', 'Authorization': 'Bearer ' + (authToken() || ''), ...(opts.headers || {}) } });
     }
 
     function addUser(text) {
-      const el = document.createElement('div');
-      el.className = 'msg user';
-      const b = document.createElement('div');
-      b.className = 'bubble'; b.textContent = text;
-      el.appendChild(b);
-      const t = document.createElement('div');
-      t.className = 'msg-time'; t.textContent = timeNow();
-      el.appendChild(t);
-      chatBody.appendChild(el); scrollDown();
+      const el = document.createElement('div'); el.className = 'msg user';
+      const av = document.createElement('div'); av.className = 'avatar'; av.textContent = 'You';
+      const col = document.createElement('div'); col.className = 'col';
+      const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
+      const t = document.createElement('div'); t.className = 'msg-time'; t.textContent = timeNow();
+      col.append(b, t); el.append(av, col); chatBody.appendChild(el); scrollDown();
     }
-
     function addAssistant(text, { error = false, time = timeNow() } = {}) {
-      const el = document.createElement('div');
-      el.className = 'msg assistant';
-      const b = document.createElement('div');
-      b.className = 'bubble' + (error ? ' error' : ''); b.textContent = text;
-      el.appendChild(b);
-      if (time) { const t = document.createElement('div'); t.className = 'msg-time'; t.textContent = time; el.appendChild(t); }
-      chatBody.appendChild(el); scrollDown();
+      const el = document.createElement('div'); el.className = 'msg assistant';
+      const av = document.createElement('div'); av.className = 'avatar'; av.innerHTML = DOG;
+      const col = document.createElement('div'); col.className = 'col';
+      const b = document.createElement('div'); b.className = 'bubble' + (error ? ' error' : ''); b.textContent = text;
+      col.appendChild(b);
+      if (time) { const t = document.createElement('div'); t.className = 'msg-time'; t.textContent = time; col.appendChild(t); }
+      el.append(av, col); chatBody.appendChild(el); scrollDown();
       return { el, bubble: b };
     }
 
-    // Render draft HTML into the preview (no staging round-trip).
+    addAssistant(`Hi 👋 What would you like to update on ${orgName}'s site? Describe a change and I'll show it in the preview. When it looks right, hit Publish Changes.`, { time: '' });
+
     function setPreviewHtml(html) {
       lastHtml = html;
-      hasDraft = true;
-      iframe.removeAttribute('src');
-      iframe.srcdoc = html;
+      iframe.removeAttribute('src'); iframe.srcdoc = html;
       previewUrl.textContent = document.querySelector('.site-name').textContent + ' — draft (unpublished)';
-      statusDot.classList.remove('clean');
-      statusText.textContent = 'Unpublished changes';
+      statusDot.classList.remove('clean'); statusText.textContent = 'Unpublished changes';
     }
-
-    function refreshPreview() {
-      if (lastHtml != null) { iframe.srcdoc = lastHtml; }
-      else { iframe.src = LIVE_URL + '/?t=' + Date.now(); }
-    }
-
+    function refreshPreview() { if (lastHtml != null) iframe.srcdoc = lastHtml; else iframe.src = LIVE_URL + '/?t=' + Date.now(); }
     function setBusy(state) { busy = state; sendBtn.disabled = state; input.disabled = state; }
+    function setCanRevert(v) { revertBtn.disabled = !v; }
 
-    async function submit(prompt, { confirmStructural = false, echo = true } = {}) {
-      if (echo) addUser(prompt);
+    async function submit(prompt) {
+      addUser(prompt);
       setBusy(true);
-      const thinking = addAssistant('Working on it…', { time: '' });
+      const thinking = addAssistant('', { time: '' });
       thinking.bubble.innerHTML = '<span class="building"><span class="spinner"></span> Thinking…</span>';
       try {
-        const res = await apiFetch('/api/edit-site', {
-          method: 'POST',
-          body: JSON.stringify({ prompt, confirmStructural }),
-        });
+        const res = await apiFetch('/api/edit-site', { method: 'POST', body: JSON.stringify({ prompt }) });
         const data = await res.json().catch(() => ({}));
         thinking.el.remove();
-
-        if (res.status === 401) {
-          addAssistant('Your session has expired. Redirecting you to sign in…', { error: true });
-          setTimeout(signOut, 1200); return;
-        }
-        if (!res.ok) {
-          const msg = data.detail ? `${data.error || 'Error'} — ${data.detail}` : (data.error || `Something went wrong (HTTP ${res.status}).`);
-          addAssistant(msg, { error: true });
-          return;
-        }
-
-        if (data.status === 'needs_confirmation') {
-          const m = addAssistant(data.message || 'This change may affect site-wide structure. Proceed anyway?');
-          const actions = document.createElement('div');
-          actions.className = 'confirm-actions';
-          const yes = document.createElement('button'); yes.className = 'confirm-yes'; yes.textContent = 'Yes, go ahead';
-          const no = document.createElement('button'); no.className = 'confirm-no'; no.textContent = 'Cancel';
-          yes.onclick = () => { actions.remove(); submit(prompt, { confirmStructural: true, echo: false }); };
-          no.onclick = () => { actions.remove(); };
-          m.bubble.appendChild(actions); scrollDown(); return;
-        }
-
-        if (data.status === 'no_change') {
-          addAssistant('That didn’t change anything on the page — the content already matches. Try describing the change differently.');
-          return;
-        }
-
+        if (res.status === 401) { addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
+        if (!res.ok) { const m = data.detail ? `${data.error || 'Error'} — ${data.detail}` : (data.error || `Something went wrong (HTTP ${res.status}).`); addAssistant(m, { error: true }); return; }
+        if (data.status === 'no_change') { addAssistant('That didn’t change anything — the content already matches. Try describing it differently.'); return; }
         if (data.status === 'ok' && typeof data.html === 'string') {
           setPreviewHtml(data.html);
-          const m = addAssistant('Done — updated your draft. The preview is live on the left.', { time: timeNow() });
-          const chip = document.createElement('div');
-          chip.className = 'diff-chip';
-          chip.innerHTML = '<span class="dot"></span> <span><b>Draft updated.</b> Publish when it looks right.</span>';
-          m.bubble.appendChild(chip); scrollDown();
-          return;
+          setCanRevert(true);
+          const m = addAssistant('Done — updated your draft. The preview is live on the left.');
+          const chip = document.createElement('div'); chip.className = 'diff-chip';
+          chip.innerHTML = '<span class="dot"></span> <span><b>Draft updated.</b> Publish when it looks right, or Revert to undo.</span>';
+          m.bubble.appendChild(chip); scrollDown(); return;
         }
-
         addAssistant('Unexpected response from the server.', { error: true });
-      } catch (err) {
-        thinking.el.remove();
-        addAssistant('Could not reach the editor service. Check your connection and try again.', { error: true });
-      } finally { setBusy(false); }
+      } catch (err) { thinking.el.remove(); addAssistant('Could not reach the editor service. Check your connection and try again.', { error: true }); }
+      finally { setBusy(false); }
     }
-
-    function send() {
-      const text = input.value.trim();
-      if (!text || busy) return;
-      input.value = '';
-      submit(text);
-    }
+    function send() { const text = input.value.trim(); if (!text || busy) return; input.value = ''; submit(text); }
     sendBtn.addEventListener('click', send);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+    document.getElementById('suggestionRow').addEventListener('click', (e) => { const c = e.target.closest('.suggestion-chip'); if (c) { input.value = c.textContent.trim(); input.focus(); } });
 
-    document.getElementById('suggestionRow').addEventListener('click', (e) => {
-      const chip = e.target.closest('.suggestion-chip');
-      if (chip) { input.value = chip.textContent.trim(); input.focus(); }
-    });
-
-    // Viewport toggle.
-    document.querySelectorAll('.viewport-toggle button').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.viewport-toggle button').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        previewFrame.classList.remove('tablet', 'mobile');
-        const vp = btn.dataset.vp;
-        if (vp !== 'desktop') previewFrame.classList.add(vp);
-      });
-    });
+    document.querySelectorAll('.viewport-toggle button').forEach((btn) => btn.addEventListener('click', () => {
+      document.querySelectorAll('.viewport-toggle button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active'); previewFrame.classList.remove('tablet', 'mobile');
+      if (btn.dataset.vp !== 'desktop') previewFrame.classList.add(btn.dataset.vp);
+    }));
     document.getElementById('refreshBtn').addEventListener('click', refreshPreview);
+
+    // ---- Revert last change ----
+    revertBtn.addEventListener('click', async () => {
+      if (busy || revertBtn.disabled) return;
+      const label = revertBtn.innerHTML;
+      revertBtn.disabled = true; revertBtn.innerHTML = '<span class="spin"></span> Reverting…';
+      try {
+        const res = await apiFetch('/api/revert-draft', { method: 'POST', body: '{}' });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { setTimeout(signOut, 200); return; }
+        if (!res.ok) { addAssistant(data.detail ? `Revert failed — ${data.detail}` : (data.error || 'Revert failed.'), { error: true }); revertBtn.innerHTML = label; setCanRevert(true); return; }
+        if (data.status === 'nothing_to_revert') { addAssistant('There’s no change to revert.'); revertBtn.innerHTML = label; return; }
+        if (typeof data.html === 'string') setPreviewHtml(data.html);
+        addAssistant('Reverted the last change.', { time: timeNow() });
+        revertBtn.innerHTML = label; setCanRevert(false); // one level of undo
+      } catch (err) { addAssistant('Could not reach the revert service. Try again.', { error: true }); revertBtn.innerHTML = label; setCanRevert(true); }
+    });
 
     // ---- Publish ----
     const publishBtn = document.getElementById('publishBtn');
@@ -433,49 +344,44 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
         if (res.status === 401) { addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
         if (!res.ok) { addAssistant(data.error || data.detail || `Publish failed (HTTP ${res.status}).`, { error: true }); return; }
         if (data.status === 'nothing_to_publish') { addAssistant('There are no draft changes to publish yet.'); return; }
-        addAssistant(`Published ${data.count} file(s) to the live site — production is rebuilding now. It’ll be live in a minute or two.`, { time: timeNow() });
-        hasDraft = false; lastHtml = null;
+        addAssistant(`Published ${data.count} file(s) — production is rebuilding now. It’ll be live in a minute or two.`, { time: timeNow() });
+        lastHtml = null; setCanRevert(false);
         statusDot.classList.add('clean'); statusText.textContent = 'Published';
-      } catch (err) {
-        addAssistant('Could not reach the publish service. Try again.', { error: true });
-      } finally {
-        publishBtn.disabled = false; publishBtn.textContent = label;
-      }
+      } catch (err) { addAssistant('Could not reach the publish service. Try again.', { error: true }); }
+      finally { publishBtn.disabled = false; publishBtn.textContent = label; }
     });
 
-    // ---- History drawer ----
+    // ---- History popup ----
     const overlay = document.getElementById('historyOverlay');
     const historyBody = document.getElementById('historyBody');
     document.getElementById('historyBtn').addEventListener('click', openHistory);
     document.getElementById('historyClose').addEventListener('click', () => overlay.classList.remove('open'));
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
 
-    function fmtDate(iso) { try { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso || ''; } }
+    const fmtDate = (iso) => { try { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso || ''; } };
 
     async function openHistory() {
       overlay.classList.add('open');
-      historyBody.innerHTML = '<div class="drawer-empty">Loading…</div>';
+      historyBody.innerHTML = '<div class="modal-empty">Loading…</div>';
       try {
         const res = await apiFetch('/api/list-versions', { method: 'GET' });
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) { overlay.classList.remove('open'); setTimeout(signOut, 200); return; }
-        if (!res.ok || !Array.isArray(data.versions)) { historyBody.innerHTML = '<div class="drawer-empty">Could not load history.</div>'; return; }
-        if (data.versions.length === 0) { historyBody.innerHTML = '<div class="drawer-empty">No published versions yet.</div>'; return; }
+        if (!res.ok || !Array.isArray(data.versions)) { historyBody.innerHTML = '<div class="modal-empty">Could not load history.</div>'; return; }
+        if (data.versions.length === 0) { historyBody.innerHTML = '<div class="modal-empty">No published versions yet.</div>'; return; }
         historyBody.innerHTML = '';
         for (const v of data.versions) {
-          const item = document.createElement('div');
-          item.className = 'version-item';
+          const item = document.createElement('div'); item.className = 'version-item';
+          const left = document.createElement('div');
           const msg = document.createElement('div'); msg.className = 'version-msg'; msg.textContent = v.message;
-          const meta = document.createElement('div'); meta.className = 'version-meta';
-          meta.textContent = `${v.shortSha} · ${v.author || 'unknown'} · ${fmtDate(v.date)}`;
+          const meta = document.createElement('div'); meta.className = 'version-meta'; meta.textContent = `${v.shortSha} · ${v.author || 'unknown'} · ${fmtDate(v.date)}`;
+          left.append(msg, meta);
           const load = document.createElement('button'); load.className = 'version-load'; load.textContent = 'Load into editor';
           load.addEventListener('click', () => restoreVersion(v.sha, load));
-          item.append(msg, meta, load);
+          item.append(left, load);
           historyBody.appendChild(item);
         }
-      } catch (err) {
-        historyBody.innerHTML = '<div class="drawer-empty">Could not load history.</div>';
-      }
+      } catch (err) { historyBody.innerHTML = '<div class="modal-empty">Could not load history.</div>'; }
     }
 
     async function restoreVersion(sha, btn) {
@@ -486,15 +392,12 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
         if (res.status === 401) { setTimeout(signOut, 200); return; }
         if (!res.ok) { addAssistant(data.error || `Restore failed (HTTP ${res.status}).`, { error: true }); return; }
         if (typeof data.html === 'string') setPreviewHtml(data.html);
+        setCanRevert(false);
         overlay.classList.remove('open');
         addAssistant(`Loaded version ${sha.slice(0, 7)} into your draft. Review it, edit further, or publish.`, { time: timeNow() });
-      } catch (err) {
-        addAssistant('Could not restore that version. Try again.', { error: true });
-      } finally {
-        btn.disabled = false; btn.textContent = 'Load into editor';
-      }
+      } catch (err) { addAssistant('Could not restore that version. Try again.', { error: true }); }
+      finally { btn.disabled = false; btn.textContent = 'Load into editor'; }
     }
   </script>
-
 </body>
 </html>

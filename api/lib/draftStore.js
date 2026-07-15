@@ -42,6 +42,13 @@ function blobName(clientId, repoRelPath) {
   return `${clientId}/${repoRelPath}`;
 }
 
+// Single-level undo copies live under this segment so they're never listed as
+// draft files (and so never published). See getUndoFile / setUndoFile.
+const UNDO_SEG = '__undo__/';
+function undoName(clientId, repoRelPath) {
+  return `${clientId}/${UNDO_SEG}${repoRelPath}`;
+}
+
 /** Draft content for a file, or null if no draft exists. */
 async function getDraftFile(clientId, repoRelPath) {
   const c = await container();
@@ -65,15 +72,43 @@ async function setDraftFile(clientId, repoRelPath, content) {
   });
 }
 
-/** Repo-relative paths that currently have a draft for this client. */
+/** Repo-relative paths that currently have a draft for this client (excludes undo copies). */
 async function listDraftFiles(clientId) {
   const c = await container();
   const prefix = `${clientId}/`;
   const files = [];
   for await (const item of c.listBlobsFlat({ prefix })) {
-    files.push(item.name.slice(prefix.length));
+    const rel = item.name.slice(prefix.length);
+    if (rel.startsWith(UNDO_SEG)) continue; // never publish undo copies
+    files.push(rel);
   }
   return files;
+}
+
+/** The single-level undo copy for a file, or null. */
+async function getUndoFile(clientId, repoRelPath) {
+  const c = await container();
+  const blob = c.getBlockBlobClient(undoName(clientId, repoRelPath));
+  try {
+    return (await blob.downloadToBuffer()).toString('utf-8');
+  } catch (err) {
+    if (err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+/** Save the pre-edit content as the single-level undo copy. */
+async function setUndoFile(clientId, repoRelPath, content) {
+  const c = await container();
+  const blob = c.getBlockBlobClient(undoName(clientId, repoRelPath));
+  const data = Buffer.from(content, 'utf-8');
+  await blob.upload(data, data.length, { blobHTTPHeaders: { blobContentType: 'text/plain; charset=utf-8' } });
+}
+
+/** Delete the undo copy (after a revert — one level of undo). */
+async function clearUndoFile(clientId, repoRelPath) {
+  const c = await container();
+  await c.deleteBlob(undoName(clientId, repoRelPath)).catch(() => {});
 }
 
 /** Delete all drafts for a client (after a successful publish). */
@@ -85,4 +120,7 @@ async function clearDraft(clientId) {
   }
 }
 
-module.exports = { getDraftFile, setDraftFile, listDraftFiles, clearDraft, blobName };
+module.exports = {
+  getDraftFile, setDraftFile, listDraftFiles, clearDraft, blobName,
+  getUndoFile, setUndoFile, clearUndoFile,
+};

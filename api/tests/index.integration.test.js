@@ -49,6 +49,7 @@ require.cache[require.resolve('../lib/draftStore')] = {
     getDraftFile: async () => CURRENT_INDEX, // there is already a draft; deterministic "current"
     setDraftFile: async (clientId, p, content) => { saveCalls.push({ path: p, content }); },
     listDraftFiles: async () => [], clearDraft: async () => {},
+    setUndoFile: async () => {}, getUndoFile: async () => null, clearUndoFile: async () => {},
   },
 };
 let nextRenderThrows = false;
