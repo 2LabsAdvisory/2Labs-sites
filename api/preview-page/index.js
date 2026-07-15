@@ -58,7 +58,10 @@ module.exports = async function (context, req) {
     for (const p of await listDraftFiles(CLIENT_ID)) overlay[p] = await getDraftFile(CLIENT_ID, p);
 
     const html = await renderDraft(file, content, overlay);
-    context.res = { status: 200, body: { status: 'ok', path: urlPath, file, html } };
+    context.res = {
+      status: 200,
+      body: { status: 'ok', path: urlPath, file, html, hasDrafts: Object.keys(overlay).length > 0 },
+    };
   } catch (err) {
     context.log.error(err);
     context.res = { status: 500, body: { error: 'Preview failed.', detail: err.message } };
