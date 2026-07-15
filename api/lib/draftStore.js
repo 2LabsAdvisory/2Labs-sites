@@ -42,12 +42,12 @@ function blobName(clientId, repoRelPath) {
   return `${clientId}/${repoRelPath}`;
 }
 
-// Single-level undo copies live under this segment so they're never listed as
-// draft files (and so never published). See getUndoFile / setUndoFile.
+// Undo state lives under this segment so it's never listed as a draft file
+// (and so never published). One-level undo is a full snapshot of the draft
+// set (path -> content) taken before each edit, so multi-file edits and new
+// pages revert cleanly.
 const UNDO_SEG = '__undo__/';
-function undoName(clientId, repoRelPath) {
-  return `${clientId}/${UNDO_SEG}${repoRelPath}`;
-}
+const MANIFEST_NAME = (clientId) => `${clientId}/${UNDO_SEG}manifest.json`;
 
 /** Draft content for a file, or null if no draft exists. */
 async function getDraftFile(clientId, repoRelPath) {
@@ -85,30 +85,39 @@ async function listDraftFiles(clientId) {
   return files;
 }
 
-/** The single-level undo copy for a file, or null. */
-async function getUndoFile(clientId, repoRelPath) {
+/** Save a snapshot of the whole draft set (path -> content) as the undo point. */
+async function saveUndoManifest(clientId, manifest) {
   const c = await container();
-  const blob = c.getBlockBlobClient(undoName(clientId, repoRelPath));
+  const blob = c.getBlockBlobClient(MANIFEST_NAME(clientId));
+  const data = Buffer.from(JSON.stringify(manifest), 'utf-8');
+  await blob.upload(data, data.length, { blobHTTPHeaders: { blobContentType: 'application/json' } });
+}
+
+/** The undo snapshot (path -> content), or null if there's nothing to revert. */
+async function getUndoManifest(clientId) {
+  const c = await container();
+  const blob = c.getBlockBlobClient(MANIFEST_NAME(clientId));
   try {
-    return (await blob.downloadToBuffer()).toString('utf-8');
+    return JSON.parse((await blob.downloadToBuffer()).toString('utf-8'));
   } catch (err) {
     if (err.statusCode === 404) return null;
     throw err;
   }
 }
 
-/** Save the pre-edit content as the single-level undo copy. */
-async function setUndoFile(clientId, repoRelPath, content) {
+async function clearUndoManifest(clientId) {
   const c = await container();
-  const blob = c.getBlockBlobClient(undoName(clientId, repoRelPath));
-  const data = Buffer.from(content, 'utf-8');
-  await blob.upload(data, data.length, { blobHTTPHeaders: { blobContentType: 'text/plain; charset=utf-8' } });
+  await c.deleteBlob(MANIFEST_NAME(clientId)).catch(() => {});
 }
 
-/** Delete the undo copy (after a revert — one level of undo). */
-async function clearUndoFile(clientId, repoRelPath) {
+/** Delete every draft file (but not the undo snapshot) — used by revert. */
+async function clearDraftFiles(clientId) {
   const c = await container();
-  await c.deleteBlob(undoName(clientId, repoRelPath)).catch(() => {});
+  const prefix = `${clientId}/`;
+  for await (const item of c.listBlobsFlat({ prefix })) {
+    if (item.name.slice(prefix.length).startsWith(UNDO_SEG)) continue;
+    await c.deleteBlob(item.name);
+  }
 }
 
 /** Delete all drafts for a client (after a successful publish). */
@@ -121,6 +130,6 @@ async function clearDraft(clientId) {
 }
 
 module.exports = {
-  getDraftFile, setDraftFile, listDraftFiles, clearDraft, blobName,
-  getUndoFile, setUndoFile, clearUndoFile,
+  getDraftFile, setDraftFile, listDraftFiles, clearDraft, clearDraftFiles, blobName,
+  saveUndoManifest, getUndoManifest, clearUndoManifest,
 };

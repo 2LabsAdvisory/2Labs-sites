@@ -199,20 +199,21 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       <div class="chat-head">
         <div class="badge"><svg class="dog" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg></div>
         <div>
-          <h3>Edit with 2Labs AI</h3>
-          <p>Describe a change — I'll update your draft.</p>
+          <h3>2Labs Studio AI</h3>
+          <p>Edit or add pages — describe it, or paste content to build from.</p>
         </div>
       </div>
 
       <div class="chat-body" id="chatBody"></div>
 
       <div class="suggestion-row" id="suggestionRow">
-        <div class="suggestion-chip">Reword the hero subheading</div>
+        <div class="suggestion-chip">Add a Services page</div>
+        <div class="suggestion-chip">Add an About page with our story</div>
         <div class="suggestion-chip">Add an interactive FAQ accordion</div>
       </div>
 
       <div class="chat-input">
-        <textarea id="promptInput" placeholder="Describe a change, e.g. &quot;Update our hero subheading&quot;"></textarea>
+        <textarea id="promptInput" placeholder="Describe a change, or paste content — e.g. &quot;Add a Services page about…&quot;"></textarea>
         <button class="send-btn" id="sendBtn" title="Send">↑</button>
       </div>
     </div>
@@ -275,7 +276,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       return { el, bubble: b };
     }
 
-    addAssistant(`Hi 👋 What would you like to update on ${orgName}'s site? Describe a change and I'll show it in the preview. When it looks right, hit Publish Changes.`, { time: '' });
+    addAssistant(`Hi 👋 I'm your 2Labs studio AI. I can edit ${orgName}'s site or add new pages — I'll write the content, wire it into the navigation, and follow SEO/UX best practices. Describe what you want (paste in any copy or notes to build from), and I'll show it in the preview. When it looks right, hit Publish Changes.`, { time: '' });
 
     function setPreviewHtml(html) {
       lastHtml = html;
@@ -304,10 +305,14 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
         if (data.status === 'ok' && typeof data.html === 'string') {
           setPreviewHtml(data.html);
           setCanRevert(true);
-          const m = addAssistant('Done — updated your draft. The preview is live on the left.');
+          const m = addAssistant(data.summary || 'Done — updated your site. The preview is live on the left.');
+          const files = Array.isArray(data.files) ? data.files : [];
+          const nice = files.map((f) => f.replace('src/pages/', '').replace('src/components/', '').replace('.astro', '')).join(', ');
           const chip = document.createElement('div'); chip.className = 'diff-chip';
-          chip.innerHTML = '<span class="dot"></span> <span><b>Draft updated.</b> Publish when it looks right, or Revert to undo.</span>';
-          m.bubble.appendChild(chip); scrollDown(); return;
+          const dot = document.createElement('span'); dot.className = 'dot';
+          const txt = document.createElement('span');
+          txt.innerHTML = files.length ? `<b>Updated:</b> ${nice}. Publish when it looks right, or Revert to undo.` : '<b>Draft updated.</b> Publish when it looks right, or Revert to undo.';
+          chip.append(dot, txt); m.bubble.appendChild(chip); scrollDown(); return;
         }
         addAssistant('Unexpected response from the server.', { error: true });
       } catch (err) { thinking.el.remove(); addAssistant('Could not reach the editor service. Check your connection and try again.', { error: true }); }

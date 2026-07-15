@@ -1,39 +1,67 @@
 /**
- * edit-site
+ * edit-site (multi-file, agentic)
  * -----------------------------------------------------------------------
- * Phase 0 scope: one client (2Labs), one file (src/pages/index.astro).
+ * POST /api/edit-site  { prompt: string }   (auth-gated)
  *
- * POST /api/edit-site
- * body: { prompt: string, confirmStructural?: boolean }
+ * The AI acts like a boutique NYC web studio: it can create pages, wire them
+ * into the navigation, restructure, and write real content — applying content,
+ * UX, and SEO best practices. It returns the COMPLETE content of every file to
+ * create/modify via a tool call; each is saved as a draft (Blob Storage, no
+ * git) and the primary page is rendered for a live preview.
  *
- * Flow (no git — drafts live in Blob Storage, git only happens on publish):
- *   1. Auth: require a valid, allowlisted shared-auth session.
- *   2. Guardrail: refuse structural-looking prompts unless confirmed.
- *   3. Load the current DRAFT for this client from Blob Storage; if there's
- *      no draft yet, fall back to the deployed main version on disk.
- *   4. Call Claude for the complete updated file; validate + de-fence it.
- *   5. Save the result back to Blob Storage as the draft (no commit).
- *   6. Render the edited file in-process (Astro Container) and return the
- *      rendered HTML for a live preview — not a "staged" status.
- *
- * Required app settings:
- *   ANTHROPIC_API_KEY, AZURE_STORAGE_CONNECTION_STRING (+ DRAFT_CONTAINER),
- *   plus the shared-auth settings used by ../shared/auth.
+ * Boundaries: the AI may only write files under src/ (client site pages, nav,
+ * components, layout, styles) — never the builder app (editor/dashboard/login)
+ * or the API. Publishing (separate) commits the drafts to main.
  */
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { getDraftFile, setDraftFile, setUndoFile } = require('../lib/draftStore');
+const { getDraftFile, setDraftFile, listDraftFiles, saveUndoManifest } = require('../lib/draftStore');
 const { renderDraft } = require('../lib/renderDraft');
-const { siteRoot, brand, org, editPolicy } = require('../lib/siteConfig');
+const { siteRoot, brand, org } = require('../lib/siteConfig');
 
-const TARGET_FILE = 'src/pages/index.astro'; // Phase 0: hardcoded to the homepage
-const CLIENT_ID = brand.clientId; // Phase 0: single client
+const CLIENT_ID = brand.clientId;
+
+// Builder-app pages the AI must never touch (they ARE this editor UI).
+const PROTECTED = new Set([
+  'src/pages/editor.astro',
+  'src/pages/dashboard.astro',
+  'src/pages/login.astro',
+]);
+
+// Files always shown to the AI for context (structure + nav).
+const CONTEXT_EXTRAS = [
+  'src/components/Header.astro',
+  'src/components/Footer.astro',
+  'src/layouts/BaseLayout.astro',
+];
+
+const APPLY_TOOL = {
+  name: 'apply_site_changes',
+  description:
+    'Apply the website changes by returning the COMPLETE new content of every file to create or modify.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'A friendly 1–2 sentence summary of what you did, in a boutique-studio voice.' },
+      primary_path: { type: 'string', description: 'Repo-relative path of the page to show in the preview (the main page created or edited).' },
+      files: {
+        type: 'array',
+        description: 'Every file to write, each with its complete content.',
+        items: {
+          type: 'object',
+          properties: { path: { type: 'string' }, content: { type: 'string' } },
+          required: ['path', 'content'],
+        },
+      },
+    },
+    required: ['summary', 'primary_path', 'files'],
+  },
+};
 
 module.exports = async function (context, req) {
-  // 1. Auth gate — a valid, allowlisted shared-auth session is required.
   const sessionEmail = await validateSessionEmail(getBearerToken(req));
   if (!sessionEmail || !isEmailAllowed(sessionEmail)) {
     context.res = { status: 401, body: { error: 'Authentication required.' } };
@@ -41,7 +69,6 @@ module.exports = async function (context, req) {
   }
 
   const prompt = req.body && req.body.prompt;
-
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     context.res = { status: 400, body: { error: 'A non-empty "prompt" string is required.' } };
     return;
@@ -53,97 +80,67 @@ module.exports = async function (context, req) {
   }
 
   try {
-    // Guardrails removed: the AI may change anything on the page — structure,
-    // layout, navigation, interactivity, whole new sections. The only real
-    // limit is what actually renders; a broken edit surfaces as a render error
-    // and is NOT saved (render runs before the draft is persisted, below).
-
-    // Load the current draft, or fall back to the deployed main version.
-    //    (Stage labels on the throws so a failure pinpoints where it broke.)
-    let currentContent;
-    try {
-      currentContent = await getDraftFile(CLIENT_ID, TARGET_FILE);
-      if (currentContent == null) {
-        currentContent = fs.readFileSync(path.join(siteRoot(), TARGET_FILE), 'utf-8');
-      }
-    } catch (e) {
-      throw new Error(`draft-load: ${e.message}`);
+    // 1. Gather the current site (client pages + nav/layout), draft-or-disk.
+    const context_files = {};
+    for (const p of await listSitePages()) context_files[p] = await effectiveContent(p);
+    for (const p of CONTEXT_EXTRAS) {
+      const c = await effectiveContent(p);
+      if (c != null) context_files[p] = c;
     }
 
-    // 4. Ask Claude for the complete updated file.
-    let message;
+    // 2. Ask Claude (studio persona) for the file changes via a tool call.
+    let response;
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      message = await anthropic.messages.create({
+      response = await anthropic.messages.create({
         model: 'claude-sonnet-5',
         max_tokens: 16000,
         system: buildSystemPrompt(brand, org),
-        messages: [
-          {
-            role: 'user',
-            content: [
-              `Current file: ${TARGET_FILE}`,
-              '```astro',
-              currentContent,
-              '```',
-              '',
-              `Requested change: ${prompt}`,
-              '',
-              'Return ONLY the complete updated file content, with no explanation, ',
-              'no markdown code fences, and no surrounding commentary.',
-            ].join('\n'),
-          },
-        ],
+        tools: [APPLY_TOOL],
+        tool_choice: { type: 'tool', name: 'apply_site_changes' },
+        messages: [{ role: 'user', content: buildUserMessage(prompt, context_files) }],
       });
     } catch (e) {
       throw new Error(`anthropic: ${e.message}`);
     }
 
-    const newContent = stripCodeFences(extractText(message));
+    const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && b.name === 'apply_site_changes');
+    if (!toolUse || !toolUse.input) throw new Error('The AI did not return any file changes. Try rephrasing.');
 
-    // Minimal sanity net (not a content guardrail): make sure we got an actual
-    // page edit back, not an empty string or a plain-text refusal.
-    if (!newContent || newContent.trim().length < 20 || !newContent.includes('<')) {
-      throw new Error('The model did not return an editable page. Try rephrasing the request.');
+    const { summary, primary_path } = toolUse.input;
+    const files = Array.isArray(toolUse.input.files) ? toolUse.input.files : [];
+    if (files.length === 0) throw new Error('No file changes were produced.');
+
+    // 3. Validate every path is inside the client site (never the app or API).
+    for (const f of files) {
+      if (!f || !isEditablePath(f.path)) throw new Error(`Not allowed to write "${f && f.path}".`);
+      if (typeof f.content !== 'string' || f.content.trim().length < 10) throw new Error(`Empty content for "${f.path}".`);
     }
+    const primary = isEditablePath(primary_path) && files.some((f) => f.path === primary_path) ? primary_path : files[0].path;
+    const primaryContent = files.find((f) => f.path === primary).content;
 
-    if (newContent.trim() === currentContent.trim()) {
-      context.res = {
-        status: 200,
-        body: {
-          status: 'no_change',
-          file: TARGET_FILE,
-          promptEcho: prompt,
-          note: 'The model returned the file unchanged — the draft was not updated.',
-        },
-      };
-      return;
-    }
-
-    // Render FIRST — a broken edit fails here and is not saved, so a failed
-    // experiment never corrupts your draft. Only persist once it renders.
+    // 4. Render the primary page FIRST — a broken edit fails here and is not
+    //    saved. (Nav edits to Header reflect in the preview after publish.)
     let html;
     try {
-      html = await renderDraft(TARGET_FILE, newContent);
+      html = await renderDraft(primary, primaryContent);
     } catch (e) {
       throw new Error(`render: ${e.message}`);
     }
+
+    // 5. Snapshot the whole draft state for one-level undo, then save all files.
     try {
-      // Snapshot the pre-edit state for one-level "Revert last change", then save.
-      await setUndoFile(CLIENT_ID, TARGET_FILE, currentContent);
-      await setDraftFile(CLIENT_ID, TARGET_FILE, newContent);
+      const snapshot = {};
+      for (const p of await listDraftFiles(CLIENT_ID)) snapshot[p] = await getDraftFile(CLIENT_ID, p);
+      await saveUndoManifest(CLIENT_ID, snapshot);
+      for (const f of files) await setDraftFile(CLIENT_ID, f.path, f.content);
     } catch (e) {
       throw new Error(`draft-save: ${e.message}`);
     }
 
     context.res = {
       status: 200,
-      body: {
-        status: 'ok',
-        file: TARGET_FILE,
-        promptEcho: prompt,
-        html,
-      },
+      body: { status: 'ok', summary: summary || 'Updated your site.', files: files.map((f) => f.path), primary, html },
     };
   } catch (err) {
     context.log.error(err);
@@ -151,54 +148,85 @@ module.exports = async function (context, req) {
   }
 };
 
-/**
- * Remove a single wrapping markdown code fence if the model added one despite
- * being told not to (```astro / ``` / ~~~). Leaves un-fenced content untouched.
- */
-function stripCodeFences(text) {
-  const trimmed = text.trim();
-  const fence = trimmed.match(/^(?:```|~~~)[^\n]*\n([\s\S]*?)\n?(?:```|~~~)\s*$/);
-  return fence ? fence[1].trim() : trimmed;
+// ---- helpers ---------------------------------------------------------------
+
+/** May the AI write this path? Client-site source only; never the app/API. */
+function isEditablePath(p) {
+  if (typeof p !== 'string') return false;
+  const norm = p.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (norm.includes('..') || norm.startsWith('/')) return false;
+  if (PROTECTED.has(norm)) return false;
+  if (!norm.startsWith('src/')) return false;
+  return /\.(astro|css|md|mdx|ts|js)$/.test(norm);
 }
 
-/** Extract plain text from an Anthropic message response. */
-function extractText(message) {
-  return message.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
-    .trim();
+/** Effective current content: draft if present, else disk, else null. */
+async function effectiveContent(relPath) {
+  const draft = await getDraftFile(CLIENT_ID, relPath);
+  if (draft != null) return draft;
+  const abs = path.join(siteRoot(), relPath);
+  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : null;
 }
 
-/**
- * Builds the system prompt every generation call is grounded in. Grounds the
- * model in the brand, but intentionally permissive about WHAT it can change —
- * the goal is to explore the full range of what's possible.
- */
+/** The client's site pages (disk + draft), excluding builder-app pages. */
+async function listSitePages() {
+  const set = new Set();
+  const dir = path.join(siteRoot(), 'src/pages');
+  if (fs.existsSync(dir)) {
+    for (const f of fs.readdirSync(dir)) if (f.endsWith('.astro')) set.add(`src/pages/${f}`);
+  }
+  for (const p of await listDraftFiles(CLIENT_ID)) {
+    if (p.startsWith('src/pages/') && p.endsWith('.astro')) set.add(p);
+  }
+  return [...set].filter((p) => !PROTECTED.has(p));
+}
+
+function buildUserMessage(prompt, contextFiles) {
+  const parts = ['Here is the current site (each file with its full current content):', ''];
+  for (const [p, content] of Object.entries(contextFiles)) {
+    parts.push(`FILE: ${p}`, '```astro', content, '```', '');
+  }
+  parts.push(
+    'The user may paste source material (copy, notes, or an outline) directly in their request — use it as the basis for the content.',
+    '',
+    `Request: ${prompt}`,
+    '',
+    'Call apply_site_changes with the complete content of every file you create or modify.'
+  );
+  return parts.join('\n');
+}
+
+/** System prompt: a boutique NYC studio applying content/UX/SEO best practices. */
 function buildSystemPrompt(brand, org) {
   return [
-    `You are editing the website for ${brand.orgName}, a real, live business site.`,
-    `Voice: ${brand.voice}`,
+    `You are a senior web developer and content strategist at a boutique New York web studio, building and maintaining the website for ${brand.orgName}.`,
+    `Brand voice: ${brand.voice}`,
     `Mission: ${org.mission}`,
-    `Primary call to action: "${org.primaryCta}". Secondary: "${org.secondaryCta}".`,
+    `Primary CTA: "${org.primaryCta}". Secondary: "${org.secondaryCta}".`,
     '',
-    'Brand tokens available as global CSS variables (prefer these for a consistent look, but you may add your own styles too):',
+    'Brand tokens are global CSS variables — reuse them for a consistent look:',
     '  --bg, --surface, --ink, --ink-soft, --border, --primary, --primary-dark, --primary-tint-strong',
     `  Heading font: var(--font-heading) (${brand.fonts.heading}). Body font: var(--font-body) (${brand.fonts.body}).`,
     '',
-    'You have broad latitude — fully implement whatever the user asks. You may:',
-    '- restructure the page, change the layout, add or remove sections;',
-    '- add new content, components, styles, images, and copy;',
-    '- add interactivity with vanilla <script> tags (the site is static Astro,',
-    '  so client-side JS runs, but framework components like React need an',
-    '  integration that may not be installed — if unsure, prefer vanilla JS).',
+    'Work to a top studio standard:',
+    '- CONTENT: sharp, benefit-led copy in the brand voice; scannable structure; a strong, specific headline; concrete CTAs; no filler.',
+    '- UX: clear visual hierarchy, generous spacing, responsive layout, and accessibility (semantic HTML, one <h1> per page, alt text on images, labelled controls, good contrast).',
+    '- SEO: a unique, descriptive title and meta description for every page (passed as the BaseLayout title/description props), sensible heading order, and descriptive link text.',
     '',
-    'Only hard requirements:',
-    '- Return valid Astro (.astro) so the page renders. If you keep a frontmatter',
-    '  block, keep it valid; imports you reference must exist in the project.',
-    '- Return ONLY the complete updated file content — no explanation or code fences.',
+    'Technical rules (the site is Astro):',
+    '- Every page imports BaseLayout (with the correct relative path) and passes title + description props.',
+    '- Reuse the brand CSS variables; scoped <style> blocks are fine.',
+    '- Interactivity: vanilla <script> only. Do NOT use React/Vue/Svelte or any package/integration that may not be installed.',
+    '- Only write files under src/. Never edit editor.astro, dashboard.astro, or login.astro (those are the builder app).',
+    '',
+    'When asked to ADD A PAGE:',
+    '- Create src/pages/<kebab-slug>.astro — self-contained, using BaseLayout with a strong title + meta description and real, useful content.',
+    '- Wire it into the navigation by editing src/components/Header.astro (add a nav link to the new page).',
+    '- Set primary_path to the new page so it shows in the preview.',
+    '',
+    'Return your work by calling apply_site_changes with the COMPLETE content of every file you create or modify.',
   ].join('\n');
 }
 
 // Exposed for offline unit tests (api/tests/index.test.js).
-module.exports.stripCodeFences = stripCodeFences;
+module.exports.isEditablePath = isEditablePath;

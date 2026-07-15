@@ -3,18 +3,21 @@
  * -----------------------------------------------------------------------
  * POST /api/revert-draft   { }   (auth-gated)
  *
- * Undoes the LAST edit (one level): restores the pre-edit snapshot that
- * edit-site saved, renders it, and returns the HTML. Single-level — after a
- * revert there's nothing more to undo until the next edit.
+ * Undoes the LAST edit (one level). Restores the full draft snapshot that
+ * edit-site saved before the edit — so multi-file edits and newly-created
+ * pages revert cleanly (a new page is removed; an edited file is restored).
+ * Renders the homepage after reverting.
  */
 
+const fs = require('node:fs');
+const path = require('node:path');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { getUndoFile, setDraftFile, clearUndoFile } = require('../lib/draftStore');
+const { getUndoManifest, clearDraftFiles, setDraftFile, clearUndoManifest, getDraftFile } = require('../lib/draftStore');
 const { renderDraft } = require('../lib/renderDraft');
-const { brand } = require('../lib/siteConfig');
+const { siteRoot, brand } = require('../lib/siteConfig');
 
 const CLIENT_ID = brand.clientId;
-const TARGET_FILE = 'src/pages/index.astro';
+const HOME = 'src/pages/index.astro';
 
 module.exports = async function (context, req) {
   const sessionEmail = await validateSessionEmail(getBearerToken(req));
@@ -24,19 +27,28 @@ module.exports = async function (context, req) {
   }
 
   try {
-    const previous = await getUndoFile(CLIENT_ID, TARGET_FILE);
-    if (previous == null) {
+    const manifest = await getUndoManifest(CLIENT_ID);
+    if (manifest == null) {
       context.res = { status: 200, body: { status: 'nothing_to_revert', message: 'There is no change to revert.' } };
       return;
     }
 
-    const html = await renderDraft(TARGET_FILE, previous);
-    await setDraftFile(CLIENT_ID, TARGET_FILE, previous);
-    await clearUndoFile(CLIENT_ID, TARGET_FILE); // one level of undo
+    // Restore the exact draft set from before the last edit.
+    await clearDraftFiles(CLIENT_ID);
+    for (const [p, content] of Object.entries(manifest)) await setDraftFile(CLIENT_ID, p, content);
+    await clearUndoManifest(CLIENT_ID); // one level of undo
+
+    // Preview the homepage in its reverted state (draft-or-disk).
+    let homeContent = await getDraftFile(CLIENT_ID, HOME);
+    if (homeContent == null) {
+      const abs = path.join(siteRoot(), HOME);
+      homeContent = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : '';
+    }
+    const html = homeContent ? await renderDraft(HOME, homeContent) : null;
 
     context.res = {
       status: 200,
-      body: { status: 'reverted', file: TARGET_FILE, html, note: 'Reverted the last change.' },
+      body: { status: 'reverted', html, note: 'Reverted the last change.' },
     };
   } catch (err) {
     context.log.error(err);
