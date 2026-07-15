@@ -1,92 +1,86 @@
 'use strict';
 
 /**
- * Renders an edited .astro source string to HTML in-process (live editor
- * preview, no git commit / SWA rebuild).
+ * Renders an edited .astro page to HTML in-process (live editor preview, no
+ * git commit / SWA rebuild).
  *
- * Azure-safe design:
- *   - One warm Vite SSR server (Astro's pipeline), rooted at siteRoot() —
- *     the bundled api/_site copy in a deployed Function, or the repo root
- *     locally (see lib/siteConfig.js + scripts/bundle-site.js).
- *   - The draft is served as a Vite VIRTUAL MODULE positioned at the target
- *     file's real path, so its relative imports (BaseLayout, site-config, …)
- *     resolve — WITHOUT writing to disk. This matters because a deployed
- *     Function's filesystem is typically read-only (run-from-package), and
- *     node_modules still resolves via the read-only project location.
- *   - experimental_AstroContainer.renderToString() produces the HTML.
+ * Multi-file overlay: the page AND any other edited files (e.g. Header.astro
+ * for navigation, a new component, a stylesheet) are served as Vite virtual
+ * modules at their real paths, so a nav/layout edit shows in the preview —
+ * not just the primary page. Files that aren't overlaid resolve from disk.
  *
- * Requires `astro`/`vite` in the Function's node_modules (see api/package.json)
- * and the project src/ tree present (bundled). Proven locally by
- * api/tests/container-render.test.js.
+ * Azure-safe: never writes to disk (deployed FS is read-only); node_modules
+ * resolves via the bundled project location (siteRoot()). A fresh Vite server
+ * per render keeps overlays correct with no stale module cache — the Claude
+ * call dominates edit latency, so the ~few-hundred-ms boot is negligible.
  */
 
 const path = require('node:path');
-const crypto = require('node:crypto');
 const { siteRoot } = require('./siteConfig');
 
 const PROJECT_ROOT = siteRoot();
 
-// Draft id -> source. The Vite plugin serves these instead of reading disk.
-const drafts = new Map();
-let serverPromise = null;
-
-async function getServer() {
-  if (!serverPromise) {
-    serverPromise = (async () => {
-      const { getViteConfig } = await import('astro/config');
-      const { createServer } = await import('vite');
-
-      const draftLoader = {
-        name: '2labs:draft-loader',
-        enforce: 'pre',
-        resolveId(id) {
-          return drafts.has(id) ? id : null;
-        },
-        load(id) {
-          return drafts.has(id) ? drafts.get(id) : null;
-        },
-      };
-
-      const cfgFn = await getViteConfig({
-        root: PROJECT_ROOT,
-        server: { middlewareMode: true, hmr: false },
-        appType: 'custom',
-        logLevel: 'silent',
-        plugins: [draftLoader],
-      });
-      const cfg = await cfgFn({ command: 'serve', mode: 'development' });
-      return createServer(cfg);
-    })();
-  }
-  return serverPromise;
-}
+const stripQuery = (id) => {
+  const i = id.indexOf('?');
+  return i === -1 ? id : id.slice(0, i);
+};
 
 /**
- * Render edited content for a repo-relative .astro path to HTML.
- * @param {string} repoRelPath e.g. 'src/pages/index.astro'
- * @param {string} content     the edited .astro source
- * @returns {Promise<string>}  rendered HTML
+ * @param {string} primaryRelPath e.g. 'src/pages/services.astro' (page to render)
+ * @param {string} primaryContent the primary page's edited source
+ * @param {Object<string,string>} overlayFiles other edited files (repoRelPath -> content),
+ *        e.g. { 'src/components/Header.astro': '<updated nav>' }
+ * @returns {Promise<string>} rendered HTML
  */
-async function renderDraft(repoRelPath, content) {
+async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}) {
   const { experimental_AstroContainer: AstroContainer } = await import('astro/container');
-  const server = await getServer();
+  const { getViteConfig } = await import('astro/config');
+  const { createServer } = await import('vite');
 
-  // A virtual .astro id living in the target file's real directory, so the
-  // draft's relative imports resolve against the project. Never touches disk.
-  const hash = crypto.createHash('sha1').update(content).digest('hex').slice(0, 12);
-  const id = path.join(PROJECT_ROOT, path.dirname(repoRelPath), `__draft_${hash}__.astro`);
-  drafts.set(id, content);
+  // Overlay: absolute file path -> content. Primary overrides any same-path entry.
+  const overlay = new Map();
+  for (const [rel, content] of Object.entries(overlayFiles || {})) {
+    overlay.set(path.join(PROJECT_ROOT, rel), content);
+  }
+  overlay.set(path.join(PROJECT_ROOT, primaryRelPath), primaryContent);
+
+  const overlayPlugin = {
+    name: '2labs:overlay',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (overlay.has(stripQuery(source))) return source;
+      if (importer && (source.startsWith('./') || source.startsWith('../'))) {
+        const abs = path.resolve(path.dirname(stripQuery(importer)), stripQuery(source));
+        if (overlay.has(abs)) return abs + (source.includes('?') ? source.slice(source.indexOf('?')) : '');
+      }
+      return null;
+    },
+    load(id) {
+      const abs = stripQuery(id);
+      // Only serve the bare module; Astro derives ?astro&type=style/script from it.
+      return id === abs && overlay.has(abs) ? overlay.get(abs) : null;
+    },
+  };
+
+  const cfgFn = await getViteConfig({
+    root: PROJECT_ROOT,
+    server: { middlewareMode: true, hmr: false },
+    appType: 'custom',
+    logLevel: 'silent',
+    plugins: [overlayPlugin],
+  });
+  const server = await createServer(await cfgFn({ command: 'serve', mode: 'development' }));
 
   try {
-    const mod = await server.ssrLoadModule(id);
+    const primaryAbs = path.join(PROJECT_ROOT, primaryRelPath);
+    const mod = await server.ssrLoadModule(primaryAbs);
     const container = await AstroContainer.create();
     let html = await container.renderToString(mod.default);
 
-    // The Container render omits imported CSS (tokens.css) and scoped
-    // component styles (.hero, nav, …). Collect them from Vite's module graph
-    // — the way Astro's own dev server does — and inject so the preview
-    // matches the built site.
-    const css = await collectCss(server, id);
+    // The Container render omits imported CSS + scoped component styles.
+    // Collect them from Vite's module graph (like Astro's dev server) so the
+    // preview matches the built site.
+    const css = await collectCss(server, primaryAbs);
     if (css) {
       const styleTag = `<style data-2labs-preview>\n${css}</style>`;
       html = html.includes('</head>') ? html.replace('</head>', `${styleTag}</head>`) : styleTag + html;
@@ -95,34 +89,20 @@ async function renderDraft(repoRelPath, content) {
     // The Container omits the <!DOCTYPE> prolog Astro normally adds; restore it.
     return /^\s*<html[\s>]/i.test(html) ? `<!DOCTYPE html>\n${html}` : html;
   } finally {
-    drafts.delete(id);
-    try {
-      const m = server.moduleGraph.getModuleById(id);
-      if (m) server.moduleGraph.invalidateModule(m);
-    } catch {
-      /* best-effort cache invalidation */
-    }
+    await server.close();
   }
 }
 
-/**
- * Collect the CSS the Container render omits: walk the draft module's import
- * graph, find CSS + Astro scoped-style modules, and pull their raw CSS via
- * Vite's `?direct` transform. The scoped selectors match the data-astro-cid
- * attributes already on the rendered elements, so injecting this styles them.
- */
+/** Collect CSS the Container render omits by walking the module graph. */
 async function collectCss(server, entryId) {
   const entry = server.moduleGraph.getModuleById(entryId);
   if (!entry) return '';
-
   const seen = new Set();
   const cssIds = [];
   (function walk(m) {
     if (!m || seen.has(m.id)) return;
     seen.add(m.id);
-    if (m.id && (m.id.endsWith('.css') || m.id.includes('lang.css') || m.id.includes('type=style'))) {
-      cssIds.push(m.id);
-    }
+    if (m.id && (m.id.endsWith('.css') || m.id.includes('lang.css') || m.id.includes('type=style'))) cssIds.push(m.id);
     for (const imp of m.importedModules) walk(imp);
   })(entry);
 
@@ -139,13 +119,7 @@ async function collectCss(server, entryId) {
   return css;
 }
 
-/** Close the warm server (used by tests so the process can exit). */
-async function closeRenderer() {
-  if (serverPromise) {
-    const server = await serverPromise;
-    await server.close();
-    serverPromise = null;
-  }
-}
+/** No-op now that each render uses its own server (kept for test compatibility). */
+async function closeRenderer() {}
 
 module.exports = { renderDraft, closeRenderer, PROJECT_ROOT };

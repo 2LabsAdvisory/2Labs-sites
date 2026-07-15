@@ -64,6 +64,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   .preview-pages button{ border:none; background:transparent; padding:6px 12px; border-radius:7px; font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; }
   .preview-pages button.active{ background:var(--ink); color:#fff; }
   .preview-pages button:disabled{ opacity:.5; cursor:not-allowed; }
+  .preview-label{ font-size:12.5px; font-weight:600; color:var(--ink-soft); }
   .preview-controls{ display:flex; align-items:center; gap:10px; }
   .refresh-btn{ width:32px;height:32px;border-radius:8px;border:1px solid var(--border); background:var(--surface); color:var(--ink-soft); cursor:pointer; font-size:14px; display:flex;align-items:center;justify-content:center; }
   .refresh-btn:hover{ color:var(--ink); }
@@ -171,12 +172,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   <div class="main">
     <div class="preview-col">
       <div class="preview-toolbar">
-        <div class="preview-pages">
-          <button class="active" data-path="/">Home</button>
-          <button disabled title="More pages come in a later phase">Programs</button>
-          <button disabled title="More pages come in a later phase">About</button>
-          <button disabled title="More pages come in a later phase">Contact</button>
-        </div>
+        <div class="preview-label" id="previewLabel">Live preview</div>
         <div class="preview-controls">
           <button class="refresh-btn" id="refreshBtn" title="Refresh preview">⟳</button>
           <div class="viewport-toggle">
@@ -288,6 +284,12 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     function setBusy(state) { busy = state; sendBtn.disabled = state; input.disabled = state; }
     function setCanRevert(v) { revertBtn.disabled = !v; }
     function setPreviewWorking(v) { previewFrame.classList.toggle('working', v); }
+    function setPreviewLabel(primaryPath) {
+      const el = document.getElementById('previewLabel');
+      if (!primaryPath) { el.textContent = 'Live preview'; return; }
+      const base = primaryPath.replace('src/pages/', '').replace('.astro', '');
+      el.textContent = 'Previewing: ' + (base === 'index' ? 'Home' : base.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+    }
 
     async function submit(prompt) {
       addUser(prompt);
@@ -304,6 +306,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
         if (data.status === 'no_change') { addAssistant('That didn’t change anything — the content already matches. Try describing it differently.'); return; }
         if (data.status === 'ok' && typeof data.html === 'string') {
           setPreviewHtml(data.html);
+          setPreviewLabel(data.primary);
           setCanRevert(true);
           const m = addAssistant(data.summary || 'Done — updated your site. The preview is live on the left.');
           const files = Array.isArray(data.files) ? data.files : [];

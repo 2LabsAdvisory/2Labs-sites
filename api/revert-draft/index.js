@@ -38,13 +38,15 @@ module.exports = async function (context, req) {
     for (const [p, content] of Object.entries(manifest)) await setDraftFile(CLIENT_ID, p, content);
     await clearUndoManifest(CLIENT_ID); // one level of undo
 
-    // Preview the homepage in its reverted state (draft-or-disk).
-    let homeContent = await getDraftFile(CLIENT_ID, HOME);
+    // Preview the homepage in its reverted state, overlaying the restored
+    // draft set so nav/layout reflect the revert too.
+    const overlay = { ...manifest };
+    let homeContent = overlay[HOME];
     if (homeContent == null) {
       const abs = path.join(siteRoot(), HOME);
       homeContent = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : '';
     }
-    const html = homeContent ? await renderDraft(HOME, homeContent) : null;
+    const html = homeContent ? await renderDraft(HOME, homeContent, overlay) : null;
 
     context.res = {
       status: 200,

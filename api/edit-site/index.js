@@ -122,11 +122,16 @@ module.exports = async function (context, req) {
     const primaryContent = files.find((f) => f.path === primary).content;
 
     // 4. Render the primary page FIRST — a broken edit fails here and is not
-    //    saved. (Nav edits to Header reflect in the preview after publish.)
+    //    saved. Overlay EVERY edited file (prior drafts + this edit) so nav/
+    //    layout changes (e.g. the updated Header) show live in the preview.
+    const overlay = {};
+    for (const p of await listDraftFiles(CLIENT_ID)) overlay[p] = await getDraftFile(CLIENT_ID, p);
+    for (const f of files) overlay[f.path] = f.content;
+
     let html;
     const tRender = Date.now();
     try {
-      html = await renderDraft(primary, primaryContent);
+      html = await renderDraft(primary, primaryContent, overlay);
     } catch (e) {
       throw new Error(`render: ${e.message}`);
     }
