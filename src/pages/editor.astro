@@ -16,6 +16,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
 <meta name="robots" content="noindex, nofollow" />
 <script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
 <title>{brand.orgName} — Site Editor</title>
+<link rel="icon" type="image/png" href="/favicon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <!-- is:global so JS-created elements (messages, chips, history rows) are styled too. -->
@@ -40,7 +41,8 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   .topbar-left{ display:flex; align-items:center; gap:14px; }
   .back-btn{ width:32px;height:32px;border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex;align-items:center;justify-content:center; color:var(--ink-soft); cursor:pointer; font-size:15px; flex-shrink:0; text-decoration:none; }
   .back-btn:hover{ color:var(--ink); border-color:var(--ink-soft); }
-  .brand-mark{ width:30px;height:30px;border-radius:50%; background:#F6EDE1; display:flex;align-items:center;justify-content:center; overflow:hidden; flex-shrink:0; padding:5px; }
+  .brand-mark{ width:30px;height:30px;border-radius:50%; overflow:hidden; flex-shrink:0; }
+  .brand-mark img{ width:100%;height:100%; object-fit:cover; display:block; }
   .site-meta{ line-height:1.25; }
   .site-name{ font-weight:700; font-size:14.5px; }
   .site-status{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-soft); }
@@ -160,7 +162,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   <div class="topbar">
     <div class="topbar-left">
       <a class="back-btn" href="/dashboard" title="Back to dashboard" aria-label="Back to dashboard">←</a>
-      <div class="brand-mark"><svg class="dog" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg></div>
+      <div class="brand-mark"><img src="/logo.png" alt="2Labs" width="30" height="30" /></div>
       <div class="site-meta">
         <div class="site-name">{brand.domain}</div>
         <div class="site-status"><span class="status-dot" id="statusDot"></span> <span id="statusText">Draft</span></div>
