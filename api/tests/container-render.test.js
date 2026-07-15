@@ -37,6 +37,22 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     assert.match(html, /\.hero/, 'scoped component styles should be injected');
   });
 
+  // 3. Client-side component <script> must run in the preview: the Container
+  //    emits it as <script src="…?astro&type=script…"> (a dev path that 404s in
+  //    the srcdoc iframe); renderDraft transforms + inlines it so interactivity
+  //    (accordions, menus) works. Regression guard for that inlining.
+  await check('inlines hoisted component scripts (interactivity works in preview)', async () => {
+    const page = `---\nimport BaseLayout from '../layouts/BaseLayout.astro';\n---\n` +
+      `<BaseLayout title="T" description="d">` +
+      `<button class="acc-btn">Toggle</button><div class="acc-panel">Panel</div>` +
+      `<script>document.querySelector('.acc-btn')?.addEventListener('click',()=>` +
+      `document.querySelector('.acc-panel')?.classList.toggle('open'));</script>` +
+      `</BaseLayout>`;
+    const html = await renderDraft('src/pages/index.astro', page);
+    assert.ok(!/src="[^"]*type=script/.test(html), 'no un-executable hoisted-script src refs should remain');
+    assert.match(html, /addEventListener\(\s*["']click["']/, 'the accordion JS should be inlined so it runs');
+  });
+
   console.log(`\n${passed} passed`);
   await closeRenderer();
 })().catch(async (e) => { console.error(e); await closeRenderer(); process.exit(1); });

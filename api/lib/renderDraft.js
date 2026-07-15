@@ -86,6 +86,12 @@ async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}) {
       html = html.includes('</head>') ? html.replace('</head>', `${styleTag}</head>`) : styleTag + html;
     }
 
+    // The Container emits hoisted component <script>s as
+    // <script src="…/x.astro?astro&type=script…"> — a dev path that 404s in the
+    // srcdoc preview iframe, so interactivity (accordions, menus, toggles) is
+    // dead. Transform each to browser JS and inline it, matching the built site.
+    html = await inlineHoistedScripts(server, html);
+
     // The Container omits the <!DOCTYPE> prolog Astro normally adds; restore it.
     return /^\s*<html[\s>]/i.test(html) ? `<!DOCTYPE html>\n${html}` : html;
   } finally {
@@ -117,6 +123,36 @@ async function collectCss(server, entryId) {
     }
   }
   return css;
+}
+
+/**
+ * Replace hoisted-script references (`<script src="…?astro&type=script…">`)
+ * with the transformed browser JS inlined, so component `<script>` behavior
+ * runs in the srcdoc preview. Plain DOM scripts inline cleanly; a script that
+ * imports npm deps resolves to a dev path that won't load in the iframe — an
+ * accepted limitation (the built site still bundles it correctly).
+ */
+async function inlineHoistedScripts(server, html) {
+  const tagRe = /<script\b[^>]*\bsrc="([^"]*type=script[^"]*)"[^>]*><\/script>/gi;
+  const raws = new Set();
+  let m;
+  while ((m = tagRe.exec(html))) raws.add(m[1]);
+  if (raws.size === 0) return html;
+
+  const codeByRaw = new Map();
+  for (const raw of raws) {
+    const id = raw.replace(/&amp;/g, '&'); // HTML-decode the attribute for Vite
+    try {
+      const res = await server.transformRequest(id, { ssr: false });
+      if (res && res.code) codeByRaw.set(raw, res.code);
+    } catch {
+      /* leave the original tag if the module won't transform */
+    }
+  }
+  return html.replace(tagRe, (tag, raw) => {
+    const code = codeByRaw.get(raw);
+    return code ? `<script type="module">\n${code}\n</script>` : tag;
+  });
 }
 
 /** No-op now that each render uses its own server (kept for test compatibility). */
