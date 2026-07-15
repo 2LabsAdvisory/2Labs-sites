@@ -356,7 +356,8 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
           setTimeout(signOut, 1200); return;
         }
         if (!res.ok) {
-          addAssistant(data.error || data.detail || `Something went wrong (HTTP ${res.status}).`, { error: true });
+          const msg = data.detail ? `${data.error || 'Error'} — ${data.detail}` : (data.error || `Something went wrong (HTTP ${res.status}).`);
+          addAssistant(msg, { error: true });
           return;
         }
 

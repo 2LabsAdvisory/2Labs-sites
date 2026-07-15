@@ -68,34 +68,45 @@ module.exports = async function (context, req) {
     }
 
     // 3. Load the current draft, or fall back to the deployed main version.
-    let currentContent = await getDraftFile(CLIENT_ID, TARGET_FILE);
-    if (currentContent == null) {
-      currentContent = fs.readFileSync(path.join(siteRoot(), TARGET_FILE), 'utf-8');
+    //    (Stage labels on the throws so a failure pinpoints where it broke.)
+    let currentContent;
+    try {
+      currentContent = await getDraftFile(CLIENT_ID, TARGET_FILE);
+      if (currentContent == null) {
+        currentContent = fs.readFileSync(path.join(siteRoot(), TARGET_FILE), 'utf-8');
+      }
+    } catch (e) {
+      throw new Error(`draft-load: ${e.message}`);
     }
 
     // 4. Ask Claude for the complete updated file.
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 16000,
-      system: buildSystemPrompt(brand, org),
-      messages: [
-        {
-          role: 'user',
-          content: [
-            `Current file: ${TARGET_FILE}`,
-            '```astro',
-            currentContent,
-            '```',
-            '',
-            `Requested change: ${prompt}`,
-            '',
-            'Return ONLY the complete updated file content, with no explanation, ',
-            'no markdown code fences, and no surrounding commentary.',
-          ].join('\n'),
-        },
-      ],
-    });
+    let message;
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      message = await anthropic.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 16000,
+        system: buildSystemPrompt(brand, org),
+        messages: [
+          {
+            role: 'user',
+            content: [
+              `Current file: ${TARGET_FILE}`,
+              '```astro',
+              currentContent,
+              '```',
+              '',
+              `Requested change: ${prompt}`,
+              '',
+              'Return ONLY the complete updated file content, with no explanation, ',
+              'no markdown code fences, and no surrounding commentary.',
+            ].join('\n'),
+          },
+        ],
+      });
+    } catch (e) {
+      throw new Error(`anthropic: ${e.message}`);
+    }
 
     const newContent = stripCodeFences(extractText(message));
 
@@ -121,8 +132,17 @@ module.exports = async function (context, req) {
     }
 
     // 5. Save the draft (no git). 6. Render a live preview and return the HTML.
-    await setDraftFile(CLIENT_ID, TARGET_FILE, newContent);
-    const html = await renderDraft(TARGET_FILE, newContent);
+    try {
+      await setDraftFile(CLIENT_ID, TARGET_FILE, newContent);
+    } catch (e) {
+      throw new Error(`draft-save: ${e.message}`);
+    }
+    let html;
+    try {
+      html = await renderDraft(TARGET_FILE, newContent);
+    } catch (e) {
+      throw new Error(`render: ${e.message}`);
+    }
 
     context.res = {
       status: 200,
