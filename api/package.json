@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.32.0",
     "@azure/storage-blob": "^12.24.0",
     "@octokit/rest": "^21.0.0",
-    "astro": "^7.0.9"
+    "astro": "^7.0.9",
+    "vite": "^8.0.13"
   }
 }
