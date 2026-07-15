@@ -1,0 +1,285 @@
+---
+// site.astro — per-site Overview ("cockpit"): the screen you land on when you
+// pick a site on the dashboard. Health scores (Lighthouse via /api/site-metrics),
+// core web-vitals, publish status, and entry points to Edit / Settings. Search
+// Console & GA4 tiles are stubbed until per-site OAuth is connected.
+import brand from '../../site-config/brand.json';
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
+<title>Site overview — 2Labs Sites</title>
+<link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style is:global>
+  :root{ --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint-strong:#FFFBEB; --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC; --green:#2F8558; --green-bg:#EAF6EF; --red:#C0392B; --radius:14px; --shadow:0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06); }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
+  a{ color:inherit; }
+  .app{ max-width:1080px; margin:0 auto; padding:0 24px 64px; }
+
+  .topbar{ display:flex; align-items:center; gap:14px; padding:20px 0; margin-bottom:22px; border-bottom:1px solid var(--border); }
+  .back{ width:34px;height:34px;border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex;align-items:center;justify-content:center; color:var(--ink-soft); text-decoration:none; flex-shrink:0; }
+  .back:hover{ color:var(--ink); border-color:var(--ink-soft); }
+  .brand-mark{ width:34px;height:34px;border-radius:50%; overflow:hidden; flex-shrink:0; }
+  .brand-mark img{ width:100%;height:100%; object-fit:cover; display:block; }
+  .titles{ flex:1; min-width:0; }
+  .titles h1{ font-size:20px; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .titles .sub{ font-size:12.5px; color:var(--ink-soft); }
+  .titles .sub a{ color:var(--amber-dark); text-decoration:none; }
+  .topbar-actions{ display:flex; gap:10px; flex-shrink:0; }
+  .btn{ border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:600; text-decoration:none; cursor:pointer; border:1px solid var(--border); background:var(--surface); color:var(--ink); display:inline-flex; align-items:center; gap:7px; }
+  .btn:hover{ border-color:var(--ink-soft); }
+  .btn.primary{ background:var(--amber); border-color:var(--amber); }
+  .btn.primary:hover{ background:var(--amber-dark); }
+  .btn[aria-disabled="true"]{ opacity:.5; pointer-events:none; }
+
+  .status-strip{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 18px; margin-bottom:22px; font-size:13.5px; }
+  .status-strip .dot{ width:8px;height:8px;border-radius:50%; background:var(--ink-soft); }
+  .status-strip .dot.live{ background:var(--green); }
+  .status-strip .sep{ color:var(--border); }
+  .status-strip .muted{ color:var(--ink-soft); }
+
+  .section-head{ display:flex; align-items:baseline; justify-content:space-between; margin:26px 0 14px; }
+  .section-head h2{ font-size:16px; margin:0; }
+  .section-head .meta{ font-size:12px; color:var(--ink-soft); }
+  .linkbtn{ background:none; border:none; color:var(--amber-dark); font-size:12.5px; font-weight:600; cursor:pointer; padding:0; }
+  .linkbtn:hover{ text-decoration:underline; }
+  .linkbtn:disabled{ color:var(--ink-soft); cursor:default; text-decoration:none; }
+
+  .rings{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+  .ring-tile{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px 14px; text-align:center; }
+  .ring-wrap{ position:relative; width:104px; height:104px; margin:0 auto 12px; }
+  .ring{ width:104px; height:104px; transform:rotate(-90deg); }
+  .ring-bg{ fill:none; stroke:#EDE8E4; stroke-width:9; }
+  .ring-fg{ fill:none; stroke:var(--ink-soft); stroke-width:9; stroke-linecap:round; stroke-dasharray:326.7; stroke-dashoffset:326.7; transition:stroke-dashoffset .7s ease, stroke .3s; }
+  .ring-fg.good{ stroke:var(--green); } .ring-fg.avg{ stroke:var(--amber-dark); } .ring-fg.poor{ stroke:var(--red); }
+  .ring-score{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:26px; }
+  .ring-score .na{ color:var(--ink-soft); font-size:18px; font-weight:600; }
+  .ring-label{ font-size:13px; font-weight:600; }
+  .ring-tile.good .ring-score{ color:var(--green); } .ring-tile.avg .ring-score{ color:var(--amber-dark); } .ring-tile.poor .ring-score{ color:var(--red); }
+
+  .vitals{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:14px; }
+  .vital{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .vital .k{ font-size:11px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; }
+  .vital .v{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:19px; margin-top:5px; }
+
+  .stub-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; }
+  .stub{ position:relative; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; }
+  .stub h3{ font-size:14.5px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+  .stub .lock{ font-size:11px; font-weight:600; color:var(--ink-soft); background:var(--bg); border:1px solid var(--border); border-radius:100px; padding:3px 9px; }
+  .stub p{ font-size:12.5px; color:var(--ink-soft); margin:6px 0 14px; line-height:1.5; }
+  .stub .ghost-rows{ display:flex; flex-direction:column; gap:8px; opacity:.5; margin-bottom:16px; }
+  .stub .ghost-rows span{ height:10px; border-radius:6px; background:linear-gradient(90deg,var(--border),#EFEBE7); }
+  .stub .ghost-rows span:nth-child(1){ width:80%; } .stub .ghost-rows span:nth-child(2){ width:60%; } .stub .ghost-rows span:nth-child(3){ width:70%; }
+
+  .banner{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:26px; text-align:center; }
+  .banner .emoji{ font-size:30px; } .banner h2{ margin:10px 0 6px; font-size:18px; }
+  .banner p{ color:var(--ink-soft); font-size:13.5px; margin:0 auto 18px; max-width:420px; line-height:1.55; }
+  .banner .cta{ display:flex; gap:10px; justify-content:center; }
+  .msg{ font-size:12.5px; color:var(--red); margin-top:10px; }
+  .hidden{ display:none !important; }
+  .spin{ width:13px;height:13px;border-radius:50%; border:2px solid rgba(31,36,46,0.2); border-top-color:var(--ink); display:inline-block; animation:spin .8s linear infinite; vertical-align:-2px; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @media (max-width:720px){ .rings{ grid-template-columns:repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <a class="back" href="/dashboard" aria-label="Back to dashboard">←</a>
+    <div class="brand-mark"><img src="/logo.png" alt="2Labs" width="34" height="34" /></div>
+    <div class="titles">
+      <h1 id="siteName">Site overview</h1>
+      <div class="sub" id="siteSub"></div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn" id="settingsLink" href="#">Settings</a>
+      <a class="btn primary" id="editLink" href="#">Open editor</a>
+    </div>
+  </div>
+
+  <div class="status-strip" id="statusStrip">
+    <span class="dot" id="liveDot"></span>
+    <span id="liveState" class="muted">Checking…</span>
+  </div>
+
+  <!-- Not-published banner -->
+  <div class="banner hidden" id="notPublished">
+    <div class="emoji">🚀</div>
+    <h2>No analytics yet</h2>
+    <p id="notPublishedMsg">Publish this site to a live domain and its performance, SEO, and traffic will show up here.</p>
+    <div class="cta">
+      <a class="btn primary" id="npEdit" href="#">Open editor</a>
+      <a class="btn" id="npSettings" href="#">Set a domain →</a>
+    </div>
+  </div>
+
+  <!-- Health -->
+  <div id="analytics" class="hidden">
+    <div class="section-head">
+      <h2>Site health</h2>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="meta" id="healthMeta"></span>
+        <button class="linkbtn" id="refreshBtn">Re-run</button>
+      </div>
+    </div>
+
+    <div class="rings">
+      <div class="ring-tile" data-metric="performance">
+        <div class="ring-wrap"><svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52"/></svg><div class="ring-score"><span class="na">–</span></div></div>
+        <div class="ring-label">Performance</div>
+      </div>
+      <div class="ring-tile" data-metric="accessibility">
+        <div class="ring-wrap"><svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52"/></svg><div class="ring-score"><span class="na">–</span></div></div>
+        <div class="ring-label">Accessibility</div>
+      </div>
+      <div class="ring-tile" data-metric="bestPractices">
+        <div class="ring-wrap"><svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52"/></svg><div class="ring-score"><span class="na">–</span></div></div>
+        <div class="ring-label">Best Practices</div>
+      </div>
+      <div class="ring-tile" data-metric="seo">
+        <div class="ring-wrap"><svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52"/></svg><div class="ring-score"><span class="na">–</span></div></div>
+        <div class="ring-label">SEO</div>
+      </div>
+    </div>
+
+    <div class="vitals" id="vitals"></div>
+    <div class="msg hidden" id="healthMsg"></div>
+
+    <!-- Search & traffic (stubbed) -->
+    <div class="section-head"><h2>Search &amp; traffic</h2></div>
+    <div class="stub-grid">
+      <div class="stub">
+        <h3>Google Search Console <span class="lock">Not connected</span></h3>
+        <p>Impressions, clicks, average position, and your top search queries — once you connect Search Console for this site.</p>
+        <div class="ghost-rows"><span></span><span></span><span></span></div>
+        <a class="btn" id="gscConnect" href="#">Connect in Settings →</a>
+      </div>
+      <div class="stub">
+        <h3>Google Analytics (GA4) <span class="lock">Not connected</span></h3>
+        <p>Visitors, sessions, and your most-viewed pages over the last 28 days — once you connect a GA4 property.</p>
+        <div class="ghost-rows"><span></span><span></span><span></span></div>
+        <a class="btn" id="ga4Connect" href="#">Connect in Settings →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const TOKEN_KEY = '2labs_sites_token';
+  const authToken = () => localStorage.getItem(TOKEN_KEY);
+  const signOut = () => { localStorage.removeItem(TOKEN_KEY); location.replace('/login'); };
+  function apiFetch(path, opts = {}) {
+    return fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-2labs-session': authToken() || '', 'Authorization': 'Bearer ' + (authToken() || ''), ...(opts.headers || {}) } });
+  }
+  const SITE = new URLSearchParams(location.search).get('site');
+  if (!SITE) location.replace('/dashboard');
+  const $ = (id) => document.getElementById(id);
+
+  const RING_CIRC = 2 * Math.PI * 52; // 326.7
+  function band(v) { return v == null ? '' : (v >= 90 ? 'good' : (v >= 50 ? 'avg' : 'poor')); }
+
+  function setRing(metric, value) {
+    const tile = document.querySelector(`.ring-tile[data-metric="${metric}"]`);
+    if (!tile) return;
+    const fg = tile.querySelector('.ring-fg');
+    const scoreEl = tile.querySelector('.ring-score');
+    tile.classList.remove('good', 'avg', 'poor');
+    fg.classList.remove('good', 'avg', 'poor');
+    if (value == null) {
+      fg.style.strokeDashoffset = RING_CIRC;
+      scoreEl.innerHTML = '<span class="na">–</span>';
+      return;
+    }
+    const cls = band(value);
+    tile.classList.add(cls); fg.classList.add(cls);
+    fg.style.strokeDashoffset = RING_CIRC * (1 - value / 100);
+    scoreEl.textContent = value;
+  }
+
+  function renderVitals(m) {
+    const rows = [
+      ['Largest Contentful Paint', m.lcp], ['Cumulative Layout Shift', m.cls],
+      ['First Contentful Paint', m.fcp], ['Total Blocking Time', m.tbt], ['Speed Index', m.speedIndex],
+    ].filter(([, v]) => v != null);
+    $('vitals').innerHTML = rows.map(([k, v]) =>
+      `<div class="vital"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  }
+
+  async function loadSite() {
+    const res = await apiFetch('/api/list-sites');
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { signOut(); return null; }
+    const site = (data.sites || []).find((s) => s.slug === SITE);
+    if (!site) { location.replace('/dashboard'); return null; }
+
+    $('siteName').textContent = site.name;
+    const url = site.domain ? `https://${String(site.domain).replace(/^https?:\/\//, '')}` : null;
+    $('siteSub').innerHTML = url ? `<a href="${url}" target="_blank" rel="noopener">${site.domain} ↗</a>` : 'No domain set';
+
+    $('editLink').href = '/editor?site=' + encodeURIComponent(SITE);
+    if (!site.editable) $('editLink').setAttribute('aria-disabled', 'true');
+    $('settingsLink').href = '/site-settings?site=' + encodeURIComponent(SITE);
+    $('npEdit').href = $('editLink').href;
+    $('npSettings').href = $('settingsLink').href;
+    $('gscConnect').href = $('settingsLink').href;
+    $('ga4Connect').href = $('settingsLink').href;
+
+    if (url) { $('liveDot').classList.add('live'); $('liveState').innerHTML = `Live at <strong>${site.domain}</strong>`; }
+    else { $('liveState').textContent = 'Not published yet'; }
+    return site;
+  }
+
+  async function loadMetrics(refresh) {
+    $('refreshBtn').disabled = true;
+    $('healthMeta').innerHTML = '<span class="spin"></span> Auditing…';
+    $('healthMsg').classList.add('hidden');
+    try {
+      const res = await apiFetch('/api/site-metrics?site=' + encodeURIComponent(SITE) + (refresh ? '&refresh=1' : ''));
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { signOut(); return; }
+      if (data.status === 'not_published') {
+        $('analytics').classList.add('hidden');
+        $('notPublishedMsg').textContent = data.message || $('notPublishedMsg').textContent;
+        $('notPublished').classList.remove('hidden');
+        return;
+      }
+      $('notPublished').classList.add('hidden');
+      $('analytics').classList.remove('hidden');
+      if (data.status !== 'ok') {
+        $('healthMeta').textContent = '';
+        $('healthMsg').textContent = (data.error || 'Could not run the audit.') + (data.detail ? ` (${data.detail})` : '');
+        $('healthMsg').classList.remove('hidden');
+        return;
+      }
+      const s = data.scores || {};
+      ['performance', 'accessibility', 'bestPractices', 'seo'].forEach((k) => setRing(k, s[k]));
+      renderVitals(data.metrics || {});
+      const when = data.fetchedAt ? new Date(data.fetchedAt).toLocaleString() : '';
+      $('healthMeta').textContent = `mobile · via PageSpeed · ${data.cached ? 'cached ' : ''}${when}`;
+    } catch (e) {
+      $('healthMsg').textContent = 'Could not reach the analytics service.';
+      $('healthMsg').classList.remove('hidden');
+      $('healthMeta').textContent = '';
+    } finally {
+      $('refreshBtn').disabled = false;
+    }
+  }
+
+  $('refreshBtn').addEventListener('click', () => loadMetrics(true));
+
+  (async () => {
+    const site = await loadSite();
+    if (site) await loadMetrics(false);
+  })();
+</script>
+</body>
+</html>

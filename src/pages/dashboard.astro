@@ -39,7 +39,10 @@ import brand from '../../site-config/brand.json';
 
   .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:16px; }
   .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column; }
-  .card-body{ padding:20px; flex:1; }
+  .card-body{ padding:20px; flex:1; display:block; text-decoration:none; color:inherit; position:relative; }
+  a.card-body:hover{ background:#FCFBFA; }
+  .card-open-hint{ font-size:12px; font-weight:600; color:var(--amber-dark); margin-top:14px; opacity:0; transition:opacity .15s; }
+  a.card-body:hover .card-open-hint{ opacity:1; }
   .card-name{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:17px; }
   .card-domain{ font-size:13px; color:var(--ink-soft); margin-top:3px; }
   .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:100px; margin-top:14px; }
@@ -127,15 +130,17 @@ import brand from '../../site-config/brand.json';
     for (const s of sites) {
       const card = document.createElement('div');
       card.className = 'card';
+      const q = encodeURIComponent(s.slug);
       card.innerHTML =
-        '<div class="card-body">' +
+        '<a class="card-body" href="/site?site=' + q + '">' +
           '<div class="card-name"></div>' +
           '<div class="card-domain"></div>' +
           statusPill(s) +
-        '</div>' +
+          '<div class="card-open-hint">View overview →</div>' +
+        '</a>' +
         '<div class="card-actions">' +
-          '<a class="open" ' + (s.editable ? '' : 'aria-disabled="true"') + ' href="/editor?site=' + encodeURIComponent(s.slug) + '">Open editor</a>' +
-          '<a href="/site-settings?site=' + encodeURIComponent(s.slug) + '">Settings</a>' +
+          '<a class="open" ' + (s.editable ? '' : 'aria-disabled="true"') + ' href="/editor?site=' + q + '">Open editor</a>' +
+          '<a href="/site-settings?site=' + q + '">Settings</a>' +
         '</div>';
       card.querySelector('.card-name').textContent = s.name;
       card.querySelector('.card-domain').textContent = s.domain || '(no domain set)';
