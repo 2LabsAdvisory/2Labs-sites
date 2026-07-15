@@ -90,6 +90,7 @@ module.exports = async function (context, req) {
 
     // 2. Ask Claude (studio persona) for the file changes via a tool call.
     let response;
+    const tGen = Date.now();
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       response = await anthropic.messages.create({
@@ -103,6 +104,7 @@ module.exports = async function (context, req) {
     } catch (e) {
       throw new Error(`anthropic: ${e.message}`);
     }
+    context.log(`[edit-site] anthropic ${Date.now() - tGen}ms, stop=${response.stop_reason}`);
 
     const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && b.name === 'apply_site_changes');
     if (!toolUse || !toolUse.input) throw new Error('The AI did not return any file changes. Try rephrasing.');
@@ -122,11 +124,13 @@ module.exports = async function (context, req) {
     // 4. Render the primary page FIRST — a broken edit fails here and is not
     //    saved. (Nav edits to Header reflect in the preview after publish.)
     let html;
+    const tRender = Date.now();
     try {
       html = await renderDraft(primary, primaryContent);
     } catch (e) {
       throw new Error(`render: ${e.message}`);
     }
+    context.log(`[edit-site] render ${Date.now() - tRender}ms (primary=${primary}, files=${files.length})`);
 
     // 5. Snapshot the whole draft state for one-level undo, then save all files.
     try {
