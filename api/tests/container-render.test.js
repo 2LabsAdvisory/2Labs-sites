@@ -31,6 +31,10 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     assert.match(html, /Do Something Wonderful/, 'should reflect the live edit');
     assert.ok(!html.includes('Do More Good'), 'old text should be gone');
     assert.match(html, /2Labs Advisory/, 'brand/org content should render');
+    // Styles must be collected + injected (tokens.css + scoped component CSS),
+    // else the preview renders unstyled.
+    assert.match(html, /font-family/, 'global styles (tokens.css) should be injected');
+    assert.match(html, /\.hero/, 'scoped component styles should be injected');
   });
 
   console.log(`\n${passed} passed`);

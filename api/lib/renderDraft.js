@@ -80,7 +80,18 @@ async function renderDraft(repoRelPath, content) {
   try {
     const mod = await server.ssrLoadModule(id);
     const container = await AstroContainer.create();
-    const html = await container.renderToString(mod.default);
+    let html = await container.renderToString(mod.default);
+
+    // The Container render omits imported CSS (tokens.css) and scoped
+    // component styles (.hero, nav, …). Collect them from Vite's module graph
+    // — the way Astro's own dev server does — and inject so the preview
+    // matches the built site.
+    const css = await collectCss(server, id);
+    if (css) {
+      const styleTag = `<style data-2labs-preview>\n${css}</style>`;
+      html = html.includes('</head>') ? html.replace('</head>', `${styleTag}</head>`) : styleTag + html;
+    }
+
     // The Container omits the <!DOCTYPE> prolog Astro normally adds; restore it.
     return /^\s*<html[\s>]/i.test(html) ? `<!DOCTYPE html>\n${html}` : html;
   } finally {
@@ -92,6 +103,40 @@ async function renderDraft(repoRelPath, content) {
       /* best-effort cache invalidation */
     }
   }
+}
+
+/**
+ * Collect the CSS the Container render omits: walk the draft module's import
+ * graph, find CSS + Astro scoped-style modules, and pull their raw CSS via
+ * Vite's `?direct` transform. The scoped selectors match the data-astro-cid
+ * attributes already on the rendered elements, so injecting this styles them.
+ */
+async function collectCss(server, entryId) {
+  const entry = server.moduleGraph.getModuleById(entryId);
+  if (!entry) return '';
+
+  const seen = new Set();
+  const cssIds = [];
+  (function walk(m) {
+    if (!m || seen.has(m.id)) return;
+    seen.add(m.id);
+    if (m.id && (m.id.endsWith('.css') || m.id.includes('lang.css') || m.id.includes('type=style'))) {
+      cssIds.push(m.id);
+    }
+    for (const imp of m.importedModules) walk(imp);
+  })(entry);
+
+  let css = '';
+  for (const cid of cssIds) {
+    try {
+      const direct = cid + (cid.includes('?') ? '&' : '?') + 'direct';
+      const res = await server.transformRequest(direct, { ssr: false });
+      if (res && res.code) css += res.code + '\n';
+    } catch {
+      /* skip a module that won't transform */
+    }
+  }
+  return css;
 }
 
 /** Close the warm server (used by tests so the process can exit). */
