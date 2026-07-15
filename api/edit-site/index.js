@@ -27,14 +27,10 @@ const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { getDraftFile, setDraftFile } = require('../lib/draftStore');
 const { renderDraft } = require('../lib/renderDraft');
-
-const brand = require('../../site-config/brand.json');
-const org = require('../../site-config/org-context.json');
-const editPolicy = require('../../site-config/edit-policy.json');
+const { siteRoot, brand, org, editPolicy } = require('../lib/siteConfig');
 
 const TARGET_FILE = 'src/pages/index.astro'; // Phase 0: hardcoded to the homepage
 const CLIENT_ID = brand.clientId; // Phase 0: single client
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 module.exports = async function (context, req) {
   // 1. Auth gate — a valid, allowlisted shared-auth session is required.
@@ -74,7 +70,7 @@ module.exports = async function (context, req) {
     // 3. Load the current draft, or fall back to the deployed main version.
     let currentContent = await getDraftFile(CLIENT_ID, TARGET_FILE);
     if (currentContent == null) {
-      currentContent = fs.readFileSync(path.join(PROJECT_ROOT, TARGET_FILE), 'utf-8');
+      currentContent = fs.readFileSync(path.join(siteRoot(), TARGET_FILE), 'utf-8');
     }
 
     // 4. Ask Claude for the complete updated file.

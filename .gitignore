@@ -2,6 +2,8 @@
 dist/
 # generated types
 .astro/
+# api render bundle (built by api/scripts/bundle-site.js during deploy)
+api/_site/
 
 # dependencies
 node_modules/

@@ -14,8 +14,8 @@
 const { Octokit } = require('@octokit/rest');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { listDraftFiles, getDraftFile, clearDraft } = require('../lib/draftStore');
+const { brand } = require('../lib/siteConfig');
 
-const brand = require('../../site-config/brand.json');
 const CLIENT_ID = brand.clientId;
 const BRANCH = 'main';
 

@@ -15,8 +15,9 @@
 const { Octokit } = require('@octokit/rest');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { setDraftFile } = require('../lib/draftStore');
+const { renderDraft } = require('../lib/renderDraft');
+const { brand } = require('../lib/siteConfig');
 
-const brand = require('../../site-config/brand.json');
 const CLIENT_ID = brand.clientId;
 const TARGET_FILE = 'src/pages/index.astro';
 
@@ -52,12 +53,21 @@ module.exports = async function (context, req) {
 
     await setDraftFile(CLIENT_ID, filePath, content);
 
+    // Render the restored draft so the editor can show it immediately.
+    let html = null;
+    try {
+      html = await renderDraft(filePath, content);
+    } catch (err) {
+      context.log.error(`restore-version render failed: ${err.message}`);
+    }
+
     context.res = {
       status: 200,
       body: {
         status: 'restored',
         file: filePath,
         sha,
+        html,
         note: 'Loaded into your draft. Review and publish when ready.',
       },
     };

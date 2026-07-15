@@ -4,7 +4,7 @@
   "private": true,
   "description": "Azure Functions API co-located with the Static Web App. AI edits are saved as per-client drafts in Blob Storage and previewed in-process (Astro Container); publishing commits drafts to GitHub main.",
   "scripts": {
-    "build": "echo \"no build step yet (plain JS functions)\"",
+    "build": "node scripts/bundle-site.js",
     "start": "func start",
     "test": "node tests/index.test.js && node tests/index.integration.test.js && node tests/container-render.test.js"
   },

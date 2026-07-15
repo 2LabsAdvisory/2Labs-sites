@@ -1,20 +1,13 @@
 ---
-// editor.astro — the client editing UI (chat right / live preview left),
-// wired to POST /api/edit-site. Phase 0: single client (2Labs), single page
-// (the homepage). Served same-origin as the API so no CORS is needed.
-//
-// NOTE (Phase 0): this route is UNAUTHENTICATED. Client OTP login (PassCard)
-// is a later step per the project brief. Do not treat /editor as private yet.
+// editor.astro — client editing UI (chat right / live preview left).
+// New model: /api/edit-site saves a Blob-Storage draft and returns rendered
+// HTML (shown here via iframe srcdoc — no staging branch). Publish commits the
+// draft to main via /api/publish-site; History uses /api/list-versions +
+// /api/restore-version. Gated behind the shared-auth session.
 import brand from '../../site-config/brand.json';
-import org from '../../site-config/org-context.json';
 
-// The staging preview environment this editor previews and edits. Every
-// /api/edit-site call commits to the `staging` branch regardless of which
-// origin serves this page, so the editor works from production or staging.
-const STAGING_URL = 'https://red-hill-0fb2bdf10-staging.centralus.7.azurestaticapps.net';
-// "Publish" = merge staging -> main. Until that's wired as an endpoint, the
-// button sends the user to GitHub's compare view to open the merge PR.
-const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main...staging';
+// Live production site (2labs.ca DNS isn't cut over yet).
+const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
 ---
 
 <!DOCTYPE html>
@@ -65,6 +58,7 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
   .site-name{ font-weight:700; font-size:14.5px; }
   .site-status{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-soft); }
   .status-dot{ width:6px;height:6px;border-radius:50%; background:var(--amber); }
+  .status-dot.clean{ background:var(--green); }
 
   .topbar-right{ display:flex; align-items:center; gap:10px; }
   .btn{
@@ -75,6 +69,7 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
   .btn-primary{ background:var(--amber); color:var(--ink); }
   .btn-primary:hover{ background:var(--amber-dark); }
   .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
+  .btn .spin{ width:13px;height:13px;border-radius:50%; border:2px solid rgba(31,36,46,0.3); border-top-color:var(--ink); animation:spin .8s linear infinite; }
 
   .main{ flex:1; display:flex; min-height:0; }
 
@@ -131,10 +126,8 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
   .msg-time{ font-size:10.5px; color:var(--ink-soft); margin-top:4px; }
   .msg.user .msg-time{ text-align:right; }
 
-  .diff-chip{ display:flex; align-items:center; gap:8px; margin-top:8px; padding:8px 10px; border-radius:9px; background:var(--amber-tint-strong); border:1px solid #F3E3B8; font-size:12px; }
-  .diff-chip .dot{ width:6px;height:6px;border-radius:50%; background:var(--amber-dark); flex-shrink:0; }
-  .diff-chip.done{ background:var(--green-bg); border-color:#CFE9D8; }
-  .diff-chip.done .dot{ background:var(--green); }
+  .diff-chip{ display:flex; align-items:center; gap:8px; margin-top:8px; padding:8px 10px; border-radius:9px; background:var(--green-bg); border:1px solid #CFE9D8; font-size:12px; }
+  .diff-chip .dot{ width:6px;height:6px;border-radius:50%; background:var(--green); flex-shrink:0; }
   .diff-chip b{ font-weight:600; }
 
   .building{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); margin-top:8px; }
@@ -162,6 +155,22 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
     cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;
   }
   .send-btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  /* History drawer */
+  .drawer-overlay{ position:fixed; inset:0; background:rgba(31,36,46,0.35); display:none; z-index:50; }
+  .drawer-overlay.open{ display:block; }
+  .drawer{ position:absolute; top:0; right:0; height:100%; width:400px; max-width:90vw; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; }
+  .drawer-head{ padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .drawer-head h3{ font-size:15px; margin:0; }
+  .drawer-close{ border:none; background:transparent; font-size:18px; color:var(--ink-soft); cursor:pointer; }
+  .drawer-body{ flex:1; overflow-y:auto; }
+  .drawer-empty{ padding:24px 18px; font-size:13px; color:var(--ink-soft); }
+  .version-item{ padding:13px 18px; border-bottom:1px solid var(--border); }
+  .version-msg{ font-size:13.5px; font-weight:500; }
+  .version-meta{ font-size:11.5px; color:var(--ink-soft); margin-top:3px; }
+  .version-load{ margin-top:9px; border:1px solid var(--amber); color:var(--amber-dark); background:#fff; font-size:12px; font-weight:600; padding:5px 11px; border-radius:8px; cursor:pointer; }
+  .version-load:hover{ background:var(--amber); color:var(--ink); }
+  .version-load:disabled{ opacity:.5; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -177,12 +186,13 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
       </div>
       <div class="site-meta">
         <div class="site-name">{brand.domain}</div>
-        <div class="site-status"><span class="status-dot"></span> Editing staging</div>
+        <div class="site-status"><span class="status-dot" id="statusDot"></span> <span id="statusText">Draft</span></div>
       </div>
     </div>
     <div class="topbar-right">
-      <a class="btn btn-ghost" id="viewStaging" href={STAGING_URL} target="_blank" rel="noopener">View Staging ↗</a>
-      <a class="btn btn-primary" id="publishBtn" href={PUBLISH_URL} target="_blank" rel="noopener" title="Opens a GitHub compare view to merge staging → main (production).">Publish Changes</a>
+      <button class="btn btn-ghost" id="historyBtn">History</button>
+      <a class="btn btn-ghost" href={LIVE_URL} target="_blank" rel="noopener">View Live ↗</a>
+      <button class="btn btn-primary" id="publishBtn" title="Publish your draft changes to the live site.">Publish Changes</button>
       <button class="btn btn-ghost" id="signOut" title="Sign out">Sign out</button>
     </div>
   </div>
@@ -209,8 +219,8 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
 
       <div class="preview-stage">
         <div class="preview-frame" id="previewFrame">
-          <div class="preview-chrome"><span></span><span></span><span></span><div class="preview-url">{brand.domain} — staging</div></div>
-          <iframe class="preview-iframe" id="previewIframe" title="Staging preview" src={STAGING_URL}></iframe>
+          <div class="preview-chrome"><span></span><span></span><span></span><div class="preview-url" id="previewUrl">{brand.domain} — live</div></div>
+          <iframe class="preview-iframe" id="previewIframe" title="Site preview" src={LIVE_URL}></iframe>
         </div>
       </div>
     </div>
@@ -218,12 +228,12 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
     <div class="chat-col">
       <div class="chat-head">
         <h3>Edit with AI</h3>
-        <p>Describe a change — I'll update the staging site.</p>
+        <p>Describe a change — I'll update your draft preview.</p>
       </div>
 
       <div class="chat-body" id="chatBody">
         <div class="msg assistant">
-          <div class="bubble">Hi 👋 What would you like to update on {brand.domain}? Describe a change to the homepage and I'll stage it for review.</div>
+          <div class="bubble">Hi 👋 What would you like to update on {brand.domain}? Describe a change and I'll show it in the preview. When it looks right, hit <b>Publish Changes</b>.</div>
         </div>
       </div>
 
@@ -240,7 +250,20 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
 
   </div>
 
-  <script define:vars={{ STAGING_URL }}>
+  <!-- History drawer -->
+  <div class="drawer-overlay" id="historyOverlay">
+    <div class="drawer">
+      <div class="drawer-head">
+        <h3>Version history</h3>
+        <button class="drawer-close" id="historyClose" aria-label="Close">✕</button>
+      </div>
+      <div class="drawer-body" id="historyBody">
+        <div class="drawer-empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <script define:vars={{ LIVE_URL }}>
     const TOKEN_KEY = '2labs_sites_token';
     function authToken() { return localStorage.getItem(TOKEN_KEY); }
     function signOut() { localStorage.removeItem(TOKEN_KEY); location.replace('/login'); }
@@ -251,80 +274,69 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
     const sendBtn = document.getElementById('sendBtn');
     const iframe = document.getElementById('previewIframe');
     const previewFrame = document.getElementById('previewFrame');
+    const previewUrl = document.getElementById('previewUrl');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
     let busy = false;
+    let lastHtml = null;       // most recent rendered draft HTML (srcdoc)
+    let hasDraft = false;      // unpublished changes present?
 
-    const timeNow = () =>
-      new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-
+    const timeNow = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     function scrollDown() { chatBody.scrollTop = chatBody.scrollHeight; }
+
+    // Session token goes in a custom header SWA forwards (it strips Authorization).
+    function apiFetch(path, opts = {}) {
+      return fetch(path, {
+        ...opts,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-2labs-session': authToken() || '',
+          'Authorization': 'Bearer ' + (authToken() || ''),
+          ...(opts.headers || {}),
+        },
+      });
+    }
 
     function addUser(text) {
       const el = document.createElement('div');
       el.className = 'msg user';
       const b = document.createElement('div');
-      b.className = 'bubble';
-      b.textContent = text;                 // textContent = no HTML injection
+      b.className = 'bubble'; b.textContent = text;
       el.appendChild(b);
       const t = document.createElement('div');
-      t.className = 'msg-time';
-      t.textContent = timeNow();
+      t.className = 'msg-time'; t.textContent = timeNow();
       el.appendChild(t);
-      chatBody.appendChild(el);
-      scrollDown();
+      chatBody.appendChild(el); scrollDown();
     }
 
-    // Returns the message element so callers can append chips/controls to it.
     function addAssistant(text, { error = false, time = timeNow() } = {}) {
       const el = document.createElement('div');
       el.className = 'msg assistant';
       const b = document.createElement('div');
-      b.className = 'bubble' + (error ? ' error' : '');
-      b.textContent = text;
+      b.className = 'bubble' + (error ? ' error' : ''); b.textContent = text;
       el.appendChild(b);
-      if (time) {
-        const t = document.createElement('div');
-        t.className = 'msg-time';
-        t.textContent = time;
-        el.appendChild(t);
-      }
-      chatBody.appendChild(el);
-      scrollDown();
+      if (time) { const t = document.createElement('div'); t.className = 'msg-time'; t.textContent = time; el.appendChild(t); }
+      chatBody.appendChild(el); scrollDown();
       return { el, bubble: b };
     }
 
-    function reloadPreview() {
-      iframe.src = STAGING_URL + '/?t=' + Date.now();
+    // Render draft HTML into the preview (no staging round-trip).
+    function setPreviewHtml(html) {
+      lastHtml = html;
+      hasDraft = true;
+      iframe.removeAttribute('src');
+      iframe.srcdoc = html;
+      previewUrl.textContent = document.querySelector('.site-name').textContent + ' — draft (unpublished)';
+      statusDot.classList.remove('clean');
+      statusText.textContent = 'Unpublished changes';
     }
 
-    // After a staged edit, the GitHub Action rebuilds the staging site (~1–2
-    // min). We can't read the cross-origin staging page from here, so we show
-    // a build indicator and reload the iframe on a schedule. (A real build-
-    // status poll via a same-origin /api endpoint is a Phase 1 improvement.)
-    function trackBuild(bubble) {
-      const building = document.createElement('div');
-      building.className = 'building';
-      building.innerHTML = '<span class="spinner"></span> Rebuilding staging site…';
-      bubble.appendChild(building);
-      scrollDown();
-
-      const reloads = [45000, 90000];
-      reloads.forEach((ms) => setTimeout(reloadPreview, ms));
-      setTimeout(() => {
-        building.remove();
-        const chip = document.createElement('div');
-        chip.className = 'diff-chip done';
-        chip.innerHTML = '<span class="dot"></span> <span><b>Live on staging.</b> Preview updated.</span>';
-        bubble.appendChild(chip);
-        reloadPreview();
-        scrollDown();
-      }, reloads[reloads.length - 1] + 2000);
+    function refreshPreview() {
+      if (lastHtml != null) { iframe.srcdoc = lastHtml; }
+      else { iframe.src = LIVE_URL + '/?t=' + Date.now(); }
     }
 
-    function setBusy(state) {
-      busy = state;
-      sendBtn.disabled = state;
-      input.disabled = state;
-    }
+    function setBusy(state) { busy = state; sendBtn.disabled = state; input.disabled = state; }
 
     async function submit(prompt, { confirmStructural = false, echo = true } = {}) {
       if (echo) addUser(prompt);
@@ -332,15 +344,8 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
       const thinking = addAssistant('Working on it…', { time: '' });
       thinking.bubble.innerHTML = '<span class="building"><span class="spinner"></span> Thinking…</span>';
       try {
-        const res = await fetch('/api/edit-site', {
+        const res = await apiFetch('/api/edit-site', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            // Azure Static Web Apps strips Authorization from managed-function
-            // requests, so the session token goes in a custom header it forwards.
-            'x-2labs-session': authToken() || '',
-            'Authorization': 'Bearer ' + (authToken() || ''),
-          },
           body: JSON.stringify({ prompt, confirmStructural }),
         });
         const data = await res.json().catch(() => ({}));
@@ -348,8 +353,7 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
 
         if (res.status === 401) {
           addAssistant('Your session has expired. Redirecting you to sign in…', { error: true });
-          setTimeout(signOut, 1200);
-          return;
+          setTimeout(signOut, 1200); return;
         }
         if (!res.ok) {
           addAssistant(data.error || data.detail || `Something went wrong (HTTP ${res.status}).`, { error: true });
@@ -360,15 +364,11 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
           const m = addAssistant(data.message || 'This change may affect site-wide structure. Proceed anyway?');
           const actions = document.createElement('div');
           actions.className = 'confirm-actions';
-          const yes = document.createElement('button');
-          yes.className = 'confirm-yes'; yes.textContent = 'Yes, go ahead';
-          const no = document.createElement('button');
-          no.className = 'confirm-no'; no.textContent = 'Cancel';
+          const yes = document.createElement('button'); yes.className = 'confirm-yes'; yes.textContent = 'Yes, go ahead';
+          const no = document.createElement('button'); no.className = 'confirm-no'; no.textContent = 'Cancel';
           yes.onclick = () => { actions.remove(); submit(prompt, { confirmStructural: true, echo: false }); };
           no.onclick = () => { actions.remove(); };
-          m.bubble.appendChild(actions);
-          scrollDown();
-          return;
+          m.bubble.appendChild(actions); scrollDown(); return;
         }
 
         if (data.status === 'no_change') {
@@ -376,9 +376,13 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
           return;
         }
 
-        if (data.status === 'staged') {
-          const m = addAssistant('Done — staged that change to the homepage.', { time: timeNow() + ' · Staged' });
-          trackBuild(m.bubble);
+        if (data.status === 'ok' && typeof data.html === 'string') {
+          setPreviewHtml(data.html);
+          const m = addAssistant('Done — updated your draft. The preview is live on the left.', { time: timeNow() });
+          const chip = document.createElement('div');
+          chip.className = 'diff-chip';
+          chip.innerHTML = '<span class="dot"></span> <span><b>Draft updated.</b> Publish when it looks right.</span>';
+          m.bubble.appendChild(chip); scrollDown();
           return;
         }
 
@@ -386,9 +390,7 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
       } catch (err) {
         thinking.el.remove();
         addAssistant('Could not reach the editor service. Check your connection and try again.', { error: true });
-      } finally {
-        setBusy(false);
-      }
+      } finally { setBusy(false); }
     }
 
     function send() {
@@ -397,13 +399,9 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
       input.value = '';
       submit(text);
     }
-
     sendBtn.addEventListener('click', send);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 
-    // Suggestion chips fill the input.
     document.getElementById('suggestionRow').addEventListener('click', (e) => {
       const chip = e.target.closest('.suggestion-chip');
       if (chip) { input.value = chip.textContent.trim(); input.focus(); }
@@ -419,8 +417,82 @@ const PUBLISH_URL = 'https://github.com/2LabsAdvisory/2Labs-sites/compare/main..
         if (vp !== 'desktop') previewFrame.classList.add(vp);
       });
     });
+    document.getElementById('refreshBtn').addEventListener('click', refreshPreview);
 
-    document.getElementById('refreshBtn').addEventListener('click', reloadPreview);
+    // ---- Publish ----
+    const publishBtn = document.getElementById('publishBtn');
+    publishBtn.addEventListener('click', async () => {
+      if (busy) return;
+      if (!confirm('Publish your draft changes to the live site? This updates production.')) return;
+      const label = publishBtn.textContent;
+      publishBtn.disabled = true; publishBtn.innerHTML = '<span class="spin"></span> Publishing…';
+      try {
+        const res = await apiFetch('/api/publish-site', { method: 'POST', body: '{}' });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
+        if (!res.ok) { addAssistant(data.error || data.detail || `Publish failed (HTTP ${res.status}).`, { error: true }); return; }
+        if (data.status === 'nothing_to_publish') { addAssistant('There are no draft changes to publish yet.'); return; }
+        addAssistant(`Published ${data.count} file(s) to the live site — production is rebuilding now. It’ll be live in a minute or two.`, { time: timeNow() });
+        hasDraft = false; lastHtml = null;
+        statusDot.classList.add('clean'); statusText.textContent = 'Published';
+      } catch (err) {
+        addAssistant('Could not reach the publish service. Try again.', { error: true });
+      } finally {
+        publishBtn.disabled = false; publishBtn.textContent = label;
+      }
+    });
+
+    // ---- History drawer ----
+    const overlay = document.getElementById('historyOverlay');
+    const historyBody = document.getElementById('historyBody');
+    document.getElementById('historyBtn').addEventListener('click', openHistory);
+    document.getElementById('historyClose').addEventListener('click', () => overlay.classList.remove('open'));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+
+    function fmtDate(iso) { try { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso || ''; } }
+
+    async function openHistory() {
+      overlay.classList.add('open');
+      historyBody.innerHTML = '<div class="drawer-empty">Loading…</div>';
+      try {
+        const res = await apiFetch('/api/list-versions', { method: 'GET' });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { overlay.classList.remove('open'); setTimeout(signOut, 200); return; }
+        if (!res.ok || !Array.isArray(data.versions)) { historyBody.innerHTML = '<div class="drawer-empty">Could not load history.</div>'; return; }
+        if (data.versions.length === 0) { historyBody.innerHTML = '<div class="drawer-empty">No published versions yet.</div>'; return; }
+        historyBody.innerHTML = '';
+        for (const v of data.versions) {
+          const item = document.createElement('div');
+          item.className = 'version-item';
+          const msg = document.createElement('div'); msg.className = 'version-msg'; msg.textContent = v.message;
+          const meta = document.createElement('div'); meta.className = 'version-meta';
+          meta.textContent = `${v.shortSha} · ${v.author || 'unknown'} · ${fmtDate(v.date)}`;
+          const load = document.createElement('button'); load.className = 'version-load'; load.textContent = 'Load into editor';
+          load.addEventListener('click', () => restoreVersion(v.sha, load));
+          item.append(msg, meta, load);
+          historyBody.appendChild(item);
+        }
+      } catch (err) {
+        historyBody.innerHTML = '<div class="drawer-empty">Could not load history.</div>';
+      }
+    }
+
+    async function restoreVersion(sha, btn) {
+      btn.disabled = true; btn.textContent = 'Loading…';
+      try {
+        const res = await apiFetch('/api/restore-version', { method: 'POST', body: JSON.stringify({ sha }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { setTimeout(signOut, 200); return; }
+        if (!res.ok) { addAssistant(data.error || `Restore failed (HTTP ${res.status}).`, { error: true }); return; }
+        if (typeof data.html === 'string') setPreviewHtml(data.html);
+        overlay.classList.remove('open');
+        addAssistant(`Loaded version ${sha.slice(0, 7)} into your draft. Review it, edit further, or publish.`, { time: timeNow() });
+      } catch (err) {
+        addAssistant('Could not restore that version. Try again.', { error: true });
+      } finally {
+        btn.disabled = false; btn.textContent = 'Load into editor';
+      }
+    }
   </script>
 
 </body>
