@@ -51,9 +51,15 @@ require.cache[require.resolve('../lib/draftStore')] = {
     listDraftFiles: async () => [], clearDraft: async () => {},
   },
 };
+let nextRenderThrows = false;
 require.cache[require.resolve('../lib/renderDraft')] = {
   id: 'renderDraft', loaded: true,
-  exports: { renderDraft: async () => '<!DOCTYPE html>\n<html><body>rendered</body></html>' },
+  exports: {
+    renderDraft: async () => {
+      if (nextRenderThrows) throw new Error('boom');
+      return '<!DOCTYPE html>\n<html><body>rendered</body></html>';
+    },
+  },
 };
 
 process.env.ANTHROPIC_API_KEY = 'test';
@@ -64,8 +70,9 @@ const handler = require(path.join(__dirname, '..', 'edit-site', 'index.js'));
 function makeContext() {
   return { log: Object.assign(() => {}, { error: () => {} }), res: null };
 }
-async function invoke(body, { authed = true } = {}) {
+async function invoke(body, { authed = true, renderThrows = false } = {}) {
   saveCalls = [];
+  nextRenderThrows = renderThrows;
   const ctx = makeContext();
   const headers = authed ? { authorization: 'Bearer test-session-token' } : {};
   await handler(ctx, { body, headers });
@@ -87,11 +94,18 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     assert.match(saveCalls[0].content, /Do Even More Good/);
   });
 
-  await check('model refusal → 500 and NO draft saved', async () => {
+  await check('plain-text refusal (no markup) → 500 and NO draft saved', async () => {
     nextModelText = "I'm sorry, but I can't help with that request.";
     const res = await invoke({ prompt: 'reword the hero heading' });
     assert.strictEqual(res.status, 500);
-    assert.match(res.body.detail, /safety check/);
+    assert.strictEqual(saveCalls.length, 0);
+  });
+
+  await check('render failure → 500 and NO save (render runs before save)', async () => {
+    nextModelText = CURRENT_INDEX.replace('Do More Good', 'Broken Edit');
+    const res = await invoke({ prompt: 'do something that breaks the render' }, { renderThrows: true });
+    assert.strictEqual(res.status, 500);
+    assert.match(res.body.detail, /render:/);
     assert.strictEqual(saveCalls.length, 0);
   });
 
@@ -111,16 +125,9 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     assert.strictEqual(saveCalls.length, 0);
   });
 
-  await check('structural prompt → needs_confirmation, NO save', async () => {
-    nextModelText = CURRENT_INDEX.replace('Do More Good', 'X');
-    const res = await invoke({ prompt: 'change the footer text' });
-    assert.strictEqual(res.body.status, 'needs_confirmation');
-    assert.strictEqual(saveCalls.length, 0);
-  });
-
-  await check('structural prompt + confirmStructural → ok', async () => {
+  await check('guardrails removed: a structural-word prompt just edits (ok)', async () => {
     nextModelText = CURRENT_INDEX.replace('Do More Good', 'Do More Good Today');
-    const res = await invoke({ prompt: 'change the footer text', confirmStructural: true });
+    const res = await invoke({ prompt: 'change the footer and navigation layout' });
     assert.strictEqual(res.body.status, 'ok');
     assert.strictEqual(saveCalls.length, 1);
   });

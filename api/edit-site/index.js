@@ -41,7 +41,6 @@ module.exports = async function (context, req) {
   }
 
   const prompt = req.body && req.body.prompt;
-  const confirmStructural = !!(req.body && req.body.confirmStructural);
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     context.res = { status: 400, body: { error: 'A non-empty "prompt" string is required.' } };
@@ -54,20 +53,12 @@ module.exports = async function (context, req) {
   }
 
   try {
-    // 2. Structural guardrail (Phase 0 keyword check; unchanged).
-    if (!confirmStructural && isLikelyStructuralRequest(prompt, editPolicy)) {
-      context.res = {
-        status: 200,
-        body: {
-          status: 'needs_confirmation',
-          message:
-            'This looks like it might change site-wide navigation, branding, or layout rather than page content. To go ahead anyway, re-send the request with "confirmStructural": true, or rephrase to target specific page content.',
-        },
-      };
-      return;
-    }
+    // Guardrails removed: the AI may change anything on the page — structure,
+    // layout, navigation, interactivity, whole new sections. The only real
+    // limit is what actually renders; a broken edit surfaces as a render error
+    // and is NOT saved (render runs before the draft is persisted, below).
 
-    // 3. Load the current draft, or fall back to the deployed main version.
+    // Load the current draft, or fall back to the deployed main version.
     //    (Stage labels on the throws so a failure pinpoints where it broke.)
     let currentContent;
     try {
@@ -110,12 +101,10 @@ module.exports = async function (context, req) {
 
     const newContent = stripCodeFences(extractText(message));
 
-    // Guard the draft: only save output that still looks like this file.
-    const rejection = validateAstroOutput(newContent, currentContent);
-    if (rejection) {
-      throw new Error(
-        `Refusing to save: model output failed a safety check (${rejection}). The draft was left unchanged.`
-      );
+    // Minimal sanity net (not a content guardrail): make sure we got an actual
+    // page edit back, not an empty string or a plain-text refusal.
+    if (!newContent || newContent.trim().length < 20 || !newContent.includes('<')) {
+      throw new Error('The model did not return an editable page. Try rephrasing the request.');
     }
 
     if (newContent.trim() === currentContent.trim()) {
@@ -131,17 +120,18 @@ module.exports = async function (context, req) {
       return;
     }
 
-    // 5. Save the draft (no git). 6. Render a live preview and return the HTML.
-    try {
-      await setDraftFile(CLIENT_ID, TARGET_FILE, newContent);
-    } catch (e) {
-      throw new Error(`draft-save: ${e.message}`);
-    }
+    // Render FIRST — a broken edit fails here and is not saved, so a failed
+    // experiment never corrupts your draft. Only persist once it renders.
     let html;
     try {
       html = await renderDraft(TARGET_FILE, newContent);
     } catch (e) {
       throw new Error(`render: ${e.message}`);
+    }
+    try {
+      await setDraftFile(CLIENT_ID, TARGET_FILE, newContent);
+    } catch (e) {
+      throw new Error(`draft-save: ${e.message}`);
     }
 
     context.res = {
@@ -169,18 +159,6 @@ function stripCodeFences(text) {
   return fence ? fence[1].trim() : trimmed;
 }
 
-/**
- * Sanity-check that the model returned an edited version of this .astro file
- * rather than a refusal, an explanation, or something malformed. Returns a
- * short reason string if the output is unsafe to save, else null.
- */
-function validateAstroOutput(newContent, currentContent) {
-  if (!newContent || newContent.trim().length < 40) return 'output too short';
-  if (!newContent.includes('BaseLayout')) return 'missing BaseLayout';
-  if (!newContent.trimStart().startsWith('---')) return 'missing frontmatter';
-  return null;
-}
-
 /** Extract plain text from an Anthropic message response. */
 function extractText(message) {
   return message.content
@@ -191,37 +169,34 @@ function extractText(message) {
 }
 
 /**
- * Phase 0 guardrail: crude keyword check standing in for a future Haiku-based
- * intent classifier. Flags prompts that look like they want structural edits.
+ * Builds the system prompt every generation call is grounded in. Grounds the
+ * model in the brand, but intentionally permissive about WHAT it can change —
+ * the goal is to explore the full range of what's possible.
  */
-function isLikelyStructuralRequest(prompt, editPolicy) {
-  const structuralKeywords = ['navigation', 'nav bar', 'header', 'footer', 'logo', 'brand color', 'layout'];
-  const lower = prompt.toLowerCase();
-  return structuralKeywords.some((kw) => lower.includes(kw));
-}
-
-/** Builds the system prompt every generation call is grounded in. */
 function buildSystemPrompt(brand, org) {
   return [
-    `You are editing the website for ${brand.orgName}, a real, live business site — not a test fixture.`,
+    `You are editing the website for ${brand.orgName}, a real, live business site.`,
     `Voice: ${brand.voice}`,
     `Mission: ${org.mission}`,
     `Primary call to action: "${org.primaryCta}". Secondary: "${org.secondaryCta}".`,
     '',
-    'Brand tokens (do not hardcode different colors/fonts — reuse these CSS variables, already defined globally):',
+    'Brand tokens available as global CSS variables (prefer these for a consistent look, but you may add your own styles too):',
     '  --bg, --surface, --ink, --ink-soft, --border, --primary, --primary-dark, --primary-tint-strong',
     `  Heading font: var(--font-heading) (${brand.fonts.heading}). Body font: var(--font-body) (${brand.fonts.body}).`,
     '',
-    'Rules:',
-    '- This file is Astro (.astro). Keep the frontmatter (--- ... ---) block valid.',
-    '- Preserve the overall component structure and imports unless the request clearly requires changing them.',
-    '- Do not introduce client-side JavaScript frameworks or interactivity — this site is intentionally static/server-rendered for SEO.',
-    '- Do not remove or alter SEO-relevant elements (title/description props passed to BaseLayout) unless asked.',
-    '- Make the minimal change that satisfies the request. Do not rewrite unrelated sections.',
+    'You have broad latitude — fully implement whatever the user asks. You may:',
+    '- restructure the page, change the layout, add or remove sections;',
+    '- add new content, components, styles, images, and copy;',
+    '- add interactivity with vanilla <script> tags (the site is static Astro,',
+    '  so client-side JS runs, but framework components like React need an',
+    '  integration that may not be installed — if unsure, prefer vanilla JS).',
+    '',
+    'Only hard requirements:',
+    '- Return valid Astro (.astro) so the page renders. If you keep a frontmatter',
+    '  block, keep it valid; imports you reference must exist in the project.',
+    '- Return ONLY the complete updated file content — no explanation or code fences.',
   ].join('\n');
 }
 
 // Exposed for offline unit tests (api/tests/index.test.js).
 module.exports.stripCodeFences = stripCodeFences;
-module.exports.validateAstroOutput = validateAstroOutput;
-module.exports.isLikelyStructuralRequest = isLikelyStructuralRequest;
