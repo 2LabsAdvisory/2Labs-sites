@@ -19,6 +19,7 @@ const path = require('node:path');
 const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { getDraftFile, setDraftFile, listDraftFiles, saveUndoManifest } = require('../lib/draftStore');
+const { recordEdit } = require('../lib/usageStore');
 const { renderDraft } = require('../lib/renderDraft');
 const { siteRoot, brand, org } = require('../lib/siteConfig');
 
@@ -147,9 +148,26 @@ module.exports = async function (context, req) {
       throw new Error(`draft-save: ${e.message}`);
     }
 
+    // 6. Meter this edit against the user's monthly AI credits (1 edit = 1
+    //    credit; token/cost detail kept underneath). Never fail the edit on a
+    //    metering error — the work is already saved.
+    let usage = null;
+    try {
+      usage = await recordEdit(sessionEmail, response.usage || {});
+    } catch (e) {
+      context.log.warn('[edit-site] usage record failed:', e.message);
+    }
+
     context.res = {
       status: 200,
-      body: { status: 'ok', summary: summary || 'Updated your site.', files: files.map((f) => f.path), primary, html },
+      body: {
+        status: 'ok',
+        summary: summary || 'Updated your site.',
+        files: files.map((f) => f.path),
+        primary,
+        html,
+        credits: usage ? { used: usage.edits, period: usage.period } : null,
+      },
     };
   } catch (err) {
     context.log.error(err);

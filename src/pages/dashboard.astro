@@ -32,6 +32,11 @@ import brand from '../../site-config/brand.json';
   .avatar{ width:26px;height:26px;border-radius:50%; background:var(--amber); display:flex;align-items:center;justify-content:center; color:var(--ink);font-size:11px;font-weight:700; }
   .icon-btn{ border:1px solid var(--border); background:var(--surface); border-radius:9px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; }
   .icon-btn:hover{ border-color:var(--ink-soft); }
+  .credits{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:100px; padding:7px 14px; box-shadow:var(--shadow); }
+  .credits-bar{ width:56px; height:6px; border-radius:100px; background:#EDE8E4; overflow:hidden; }
+  .credits-fill{ display:block; height:100%; width:0%; border-radius:100px; background:var(--green); transition:width .4s ease, background .3s; }
+  .credits-fill.warn{ background:var(--amber-dark); } .credits-fill.full{ background:#C0392B; }
+  .credits-label{ font-size:12px; font-weight:600; color:var(--ink-soft); white-space:nowrap; }
   .head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
   .head h1{ font-size:24px; margin:0; }
   .btn-primary{ background:var(--amber); color:var(--ink); border:none; border-radius:10px; padding:11px 18px; font-weight:600; font-size:14px; cursor:pointer; }
@@ -78,6 +83,10 @@ import brand from '../../site-config/brand.json';
       <div class="brand-name">2Labs<span>Sites</span></div>
     </div>
     <div class="topbar-right">
+      <div class="credits" id="credits" title="AI edits used this month">
+        <div class="credits-bar"><span class="credits-fill" id="creditsFill"></span></div>
+        <span class="credits-label" id="creditsLabel">— / —</span>
+      </div>
       <div class="userpill"><span class="avatar" id="userAvatar">·</span> <span id="userEmail">…</span></div>
       <button class="icon-btn" id="signOut">Sign out</button>
     </div>
@@ -177,11 +186,30 @@ import brand from '../../site-config/brand.json';
     btn.disabled = false; btn.textContent = 'Create site';
   });
 
+  // AI credit meter (1 edit = 1 credit), account-wide for the month.
+  async function loadCredits() {
+    try {
+      const res = await apiFetch('/api/usage');
+      if (!res.ok) return;
+      const u = await res.json();
+      const limit = u.limit || 0, used = u.used || 0;
+      const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+      const fill = document.getElementById('creditsFill');
+      fill.style.width = pct + '%';
+      fill.classList.toggle('warn', pct >= 80 && pct < 100);
+      fill.classList.toggle('full', pct >= 100);
+      document.getElementById('creditsLabel').textContent = `${used} / ${limit} edits`;
+      const reset = u.resetsOn ? new Date(u.resetsOn).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+      document.getElementById('credits').title = `${u.remaining} AI edits left this month${reset ? ' · resets ' + reset : ''}`;
+    } catch (e) { /* best-effort */ }
+  }
+
   // User pill from the session (best-effort: token is opaque, so show a generic identity)
   document.getElementById('userEmail').textContent = 'Signed in';
   document.getElementById('userAvatar').textContent = '2L';
 
   loadSites();
+  loadCredits();
 </script>
 </body>
 </html>

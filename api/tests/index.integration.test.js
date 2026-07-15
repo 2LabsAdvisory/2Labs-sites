@@ -47,6 +47,10 @@ require.cache[require.resolve('../lib/renderDraft')] = {
   id: 'renderDraft', loaded: true,
   exports: { renderDraft: async () => { if (nextRenderThrows) throw new Error('boom'); return '<!DOCTYPE html><html><body>rendered</body></html>'; } },
 };
+require.cache[require.resolve('../lib/usageStore')] = {
+  id: 'usageStore', loaded: true,
+  exports: { recordEdit: async () => ({ period: '2026-07', edits: 1 }) },
+};
 
 process.env.ANTHROPIC_API_KEY = 'test';
 const handler = require(path.join(__dirname, '..', 'edit-site', 'index.js'));
