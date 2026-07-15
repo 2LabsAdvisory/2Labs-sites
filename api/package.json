@@ -2,14 +2,16 @@
   "name": "2labs-sites-api",
   "version": "0.1.0",
   "private": true,
-  "description": "Azure Functions API co-located with the Static Web App. Hosts the AI edit endpoint that turns a client prompt into a committed, staged site change.",
+  "description": "Azure Functions API co-located with the Static Web App. AI edits are saved as per-client drafts in Blob Storage and previewed in-process (Astro Container); publishing commits drafts to GitHub main.",
   "scripts": {
     "build": "echo \"no build step yet (plain JS functions)\"",
     "start": "func start",
-    "test": "node tests/index.test.js && node tests/index.integration.test.js"
+    "test": "node tests/index.test.js && node tests/index.integration.test.js && node tests/container-render.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
-    "@octokit/rest": "^21.0.0"
+    "@azure/storage-blob": "^12.24.0",
+    "@octokit/rest": "^21.0.0",
+    "astro": "^7.0.9"
   }
 }
