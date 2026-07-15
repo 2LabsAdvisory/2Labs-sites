@@ -1,74 +1,63 @@
 ---
-// index.astro — CONTENT FILE. Safe for the AI edit endpoint to modify
-// based on client prompts (unlike Header.astro / Footer.astro).
-import BaseLayout from '../layouts/BaseLayout.astro';
-import org from '../../site-config/org-context.json';
+// index.astro — the builder landing page served at 2labs.site/. Small, branded
+// entry with a Sign in button. (Client sites live under sites/<slug>/, not here.)
+import brand from '../../site-config/brand.json';
 ---
 
-<BaseLayout
-  title="Technology Solutions That Help Organizations Do More Good"
-  description={org.mission}
->
-  <section class="hero">
-    <p class="eyebrow">2Labs Advisory</p>
-    <h1>
-      Technology Solutions That Help Organizations
-      <span class="accent">Do More Good</span>
-    </h1>
-    <p class="lede">Technology and AI that move your mission forward.</p>
-    <p class="announcement">Now helping non-profits launch fast, SEO-ready websites with AI.</p>
-    <p class="body-copy">{org.mission}</p>
-    <div class="actions">
-      <a href="/contact" class="btn btn-primary">{org.primaryCta} →</a>
-      <a href="/solutions" class="btn btn-ghost">{org.secondaryCta}</a>
-    </div>
-  </section>
-
-  <section class="offerings">
-    <h2>What we help with</h2>
-    <div class="offering-grid">
-      {org.offerings.map((offering: string) => (
-        <div class="offering-card">
-          <p>{offering}</p>
-        </div>
-      ))}
-    </div>
-  </section>
-</BaseLayout>
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2Labs Sites — AI website builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
-  .hero {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 64px 24px 40px;
-  }
-  .eyebrow {
-    font-size: 12px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.08em; color: var(--primary-dark); margin: 0 0 12px;
-  }
-  h1 { font-size: 42px; line-height: 1.15; margin: 0 0 16px; }
-  .accent { color: var(--primary); }
-  .lede { font-size: 17px; color: var(--ink); margin: 0 0 8px; font-weight: 500; }
-  .announcement { font-size: 15px; color: var(--primary-dark); font-weight: 600; margin: 0 0 8px; }
-  .body-copy { font-size: 15px; color: var(--ink-soft); line-height: 1.6; max-width: 640px; margin: 0 0 28px; }
-  .actions { display: flex; gap: 12px; flex-wrap: wrap; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 13px 22px; border-radius: 10px;
-    font-weight: 600; font-size: 14px; text-decoration: none;
-  }
-  .btn-primary { background: var(--primary); color: var(--ink); }
-  .btn-primary:hover { background: var(--primary-dark); }
-  .btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
-
-  .offerings { max-width: 1180px; margin: 0 auto; padding: 24px 24px 80px; }
-  .offerings h2 { font-size: 22px; margin: 0 0 20px; }
-  .offering-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-  }
-  .offering-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 14px; padding: 20px; font-size: 14px; font-weight: 500;
-  }
+  :root{ --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint-strong:#FFFBEB; --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC; --shadow:0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06); }
+  *{box-sizing:border-box;}
+  body{ margin:0; min-height:100vh; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; }
+  h1{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.02em; }
+  header{ display:flex; align-items:center; justify-content:space-between; padding:20px 32px; }
+  .brand{ display:flex; align-items:center; gap:11px; }
+  .brand-mark{ width:38px;height:38px;border-radius:50%; background:#F6EDE1; display:flex;align-items:center;justify-content:center; padding:7px; }
+  .brand-mark svg{ width:100%;height:100%; }
+  .brand-name{ font-weight:800; font-size:17px; }
+  .brand-name span{ color:var(--amber-dark); }
+  .btn{ border:none; border-radius:10px; padding:11px 20px; font-family:'Inter',sans-serif; font-weight:600; font-size:14px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+  .btn-primary{ background:var(--amber); color:var(--ink); } .btn-primary:hover{ background:var(--amber-dark); }
+  .btn-ghost{ background:var(--surface); color:var(--ink); border:1px solid var(--border); }
+  main{ flex:1; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .hero{ max-width:640px; text-align:center; }
+  .eyebrow{ display:inline-block; background:var(--amber-tint-strong); color:var(--amber-dark); border:1px solid #F3E3B8; font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; padding:6px 12px; border-radius:100px; margin-bottom:22px; }
+  .hero h1{ font-size:44px; line-height:1.1; margin:0 0 16px; }
+  .hero h1 .accent{ color:var(--amber); }
+  .hero p{ font-size:17px; line-height:1.6; color:var(--ink-soft); margin:0 0 30px; }
+  .cta{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .cta .btn{ padding:13px 24px; font-size:15px; }
+  footer{ text-align:center; padding:22px; font-size:12px; color:var(--ink-soft); }
+  footer b{ color:var(--ink); }
 </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg></div>
+      <div class="brand-name">2Labs<span>Sites</span></div>
+    </div>
+    <a class="btn btn-ghost" href="/login">Sign in</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="eyebrow">AI Website Builder</span>
+      <h1>Websites that help your organization <span class="accent">do more good</span>.</h1>
+      <p>2Labs Sites builds and maintains fast, SEO-ready websites for mission-driven organizations — describe a change in plain language and publish when it looks right.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="/login">Sign in to your dashboard →</a>
+      </div>
+    </div>
+  </main>
+
+  <footer>2Labs Sites — <b>powered by {brand.orgName}</b> · proudly Canadian-owned 🍁</footer>
+</body>
+</html>

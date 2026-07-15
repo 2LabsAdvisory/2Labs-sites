@@ -1,0 +1,12 @@
+{
+  "structuralFiles": [
+    "src/components/Header.astro",
+    "src/components/Footer.astro",
+    "src/layouts/BaseLayout.astro",
+    "site-config/brand.json"
+  ],
+  "structuralFilePolicy": "Require the prompt to explicitly reference navigation, header, footer, layout, or branding before allowing an edit here. Otherwise, ask the client to confirm before applying.",
+  "contentFiles": "src/pages/**/*.astro",
+  "contentFilePolicy": "Freely editable based on client prompts.",
+  "notes": "This file is read by the edit-site Function before every AI edit to decide which files Claude is allowed to touch for a given request."
+}

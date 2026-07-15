@@ -1,0 +1,28 @@
+{
+  "clientId": "2labs",
+  "orgName": "2Labs Advisory",
+  "domain": "2labs.ca",
+  "colors": {
+    "background": "#F8F7F6",
+    "surface": "#FFFFFF",
+    "ink": "#1F242E",
+    "inkSoft": "#676F7E",
+    "border": "#E5E0DC",
+    "primary": "#F59F0A",
+    "primaryDark": "#D9870A",
+    "primaryTintStrong": "#FFFBEB",
+    "success": "#2F8558",
+    "successBg": "#EAF6EF"
+  },
+  "fonts": {
+    "heading": "Plus Jakarta Sans",
+    "body": "Inter",
+    "mono": "IBM Plex Mono"
+  },
+  "logo": {
+    "type": "icon+wordmark",
+    "iconDescription": "Two stylized dog-head profiles in a circular cream badge, one outlined in ink, one filled amber",
+    "wordmark": "2Labs"
+  },
+  "voice": "Direct, plain-spoken, practical. Avoids jargon. Leads with the client's outcome, not the technology."
+}

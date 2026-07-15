@@ -1,18 +1,7 @@
 ---
-// dashboard.astro — the client's home screen: site status, quick actions,
-// and (later) real analytics/SEO. Phase 0: the structural parts are real
-// (branding, links to the editor and live site, a live preview thumbnail);
-// the analytics / site-health / SEO cards are clearly-labelled SAMPLE data
-// until the GA4 + SEO-engine integrations land in a later phase.
-//
-// NOTE (Phase 0): this route is UNAUTHENTICATED. Client OTP login (PassCard)
-// is the next step and will gate both /dashboard and /editor.
+// dashboard.astro — the builder home: the signed-in user's sites. Pick a site
+// to edit, open its settings, or create a new one. Data from /api/list-sites.
 import brand from '../../site-config/brand.json';
-import org from '../../site-config/org-context.json';
-
-// Live production site (the SWA default env; 2labs.ca DNS isn't cut over yet).
-const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
-const orgInitials = brand.orgName.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 ---
 
 <!DOCTYPE html>
@@ -21,264 +10,172 @@ const orgInitials = brand.orgName.split(/\s+/).map((w) => w[0]).join('').slice(0
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex, nofollow" />
-<!-- Auth gate (runs before render to avoid a flash of the dashboard). -->
 <script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
-<title>{brand.orgName} — Dashboard</title>
+<title>Your sites — 2Labs Sites</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<style>
-  :root{
-    --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint:rgba(245,159,10,0.08); --amber-tint-strong:#FFFBEB;
-    --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC;
-    --green:#2F8558; --green-bg:#EAF6EF; --radius:14px;
-    --shadow:0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06);
-  }
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style is:global>
+  :root{ --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint-strong:#FFFBEB; --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC; --green:#2F8558; --green-bg:#EAF6EF; --radius:14px; --shadow:0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06); }
   *{box-sizing:border-box;}
   body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; }
-  h1,h2,h3,.display{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
-  .mono{ font-family:'IBM Plex Mono',monospace; }
+  h1,h2,h3{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
   a{ color:inherit; }
-
-  .app{ max-width:1180px; margin:0 auto; padding:0 24px 64px; }
-
-  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:22px 0; margin-bottom:26px; border-bottom:1px solid var(--border); }
+  .app{ max-width:1080px; margin:0 auto; padding:0 24px 64px; }
+  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:20px 0; margin-bottom:30px; border-bottom:1px solid var(--border); }
   .brand{ display:flex; align-items:center; gap:10px; }
-  .brand-mark{ width:34px;height:34px;border-radius:50%; background:#F6EDE1; display:flex;align-items:center;justify-content:center; overflow:hidden; }
-  .brand-mark svg{ width:22px; height:22px; }
-  .brand-name{ font-weight:700; font-size:16px; color:var(--ink); }
-  .brand-sub{ font-size:11.5px; color:var(--ink-soft); margin-top:-1px; }
-  .org-pill{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); padding:6px 14px 6px 6px; border-radius:100px; box-shadow:var(--shadow); font-size:13px; font-weight:500; }
-  .org-avatar{ width:26px;height:26px;border-radius:50%; background:var(--amber); display:flex;align-items:center;justify-content:center; color:var(--ink);font-size:11px;font-weight:700; }
+  .brand-mark{ width:34px;height:34px;border-radius:50%; background:#F6EDE1; display:flex;align-items:center;justify-content:center; padding:6px; }
+  .brand-mark svg{ width:100%;height:100%; }
+  .brand-name{ font-weight:800; font-size:16px; } .brand-name span{ color:var(--amber-dark); }
   .topbar-right{ display:flex; align-items:center; gap:12px; }
-  .icon-btn{ width:36px;height:36px;border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex;align-items:center;justify-content:center; color:var(--ink-soft); cursor:pointer; font-size:13px; text-decoration:none; }
-
-  .hero{ display:grid; grid-template-columns:1.1fr 1fr; gap:24px; background:var(--ink); border-radius:18px; padding:32px; color:#fff; position:relative; overflow:hidden; margin-bottom:16px; }
-  .hero::after{ content:""; position:absolute; right:-40px; top:-60px; width:220px; height:220px; border-radius:50%; background:radial-gradient(circle, rgba(245,159,10,0.18), transparent 70%); }
-  .hero-eyebrow{ display:inline-flex; align-items:center; gap:6px; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:#AEB4C0; margin-bottom:10px; }
-  .status-dot{ width:7px;height:7px;border-radius:50%; background:#4ADE80; }
-  .hero h1{ font-size:26px; margin:0 0 6px; font-weight:700; }
-  .hero-url{ color:#AEB4C0; font-size:13px; margin-bottom:22px; }
-  .hero-url span{ color:#fff; }
-  .btn{ border:none; border-radius:10px; padding:12px 20px; font-family:'Inter',sans-serif; font-weight:600; font-size:14px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; text-decoration:none; }
-  .btn-primary{ background:var(--amber); color:var(--ink); }
+  .userpill{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); padding:6px 14px 6px 6px; border-radius:100px; box-shadow:var(--shadow); font-size:13px; }
+  .avatar{ width:26px;height:26px;border-radius:50%; background:var(--amber); display:flex;align-items:center;justify-content:center; color:var(--ink);font-size:11px;font-weight:700; }
+  .icon-btn{ border:1px solid var(--border); background:var(--surface); border-radius:9px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; }
+  .icon-btn:hover{ border-color:var(--ink-soft); }
+  .head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+  .head h1{ font-size:24px; margin:0; }
+  .btn-primary{ background:var(--amber); color:var(--ink); border:none; border-radius:10px; padding:11px 18px; font-weight:600; font-size:14px; cursor:pointer; }
   .btn-primary:hover{ background:var(--amber-dark); }
-  .btn-ghost{ background:rgba(255,255,255,0.08); color:#fff; border:1px solid rgba(255,255,255,0.18); }
-  .hero-actions{ display:flex; gap:10px; position:relative; z-index:1; }
 
-  .preview-frame{ background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 20px 40px rgba(0,0,0,0.3); position:relative; z-index:1; }
-  .preview-chrome{ background:#EFEDEA; padding:8px 12px; display:flex; align-items:center; gap:6px; }
-  .preview-chrome span{ width:8px;height:8px;border-radius:50%; background:#D6D1CA; }
-  .preview-url{ margin-left:6px; background:#fff; border-radius:6px; padding:3px 10px; font-size:10px; color:var(--ink-soft); flex:1; }
-  .preview-thumb{ width:100%; height:190px; border:none; display:block; background:#fff; pointer-events:none; }
-
-  /* Sample-data honesty banner */
-  .sample-note{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); background:var(--amber-tint-strong); border:1px solid #F3E3B8; border-radius:10px; padding:9px 14px; margin-bottom:24px; }
-  .sample-note b{ color:var(--amber-dark); }
-  .tag-sample{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:2px 5px; vertical-align:middle; }
-
-  .stats-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
-  .card{ background:var(--surface); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); border:1px solid var(--border); }
-  .card-label{ font-size:11.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .card-value{ font-size:26px; font-weight:700; font-family:'Plus Jakarta Sans',sans-serif; }
-  .card-delta{ font-size:12px; margin-top:4px; }
-  .up{ color:var(--green); }
-  .sparkline{ margin-top:12px; }
-  .ring-wrap{ display:flex; align-items:center; gap:14px; }
-  .ring{ width:56px; height:56px; }
-  .ring-score{ font-size:22px; font-weight:700; font-family:'Plus Jakarta Sans',sans-serif; }
-  .ring-score-label{ font-size:12px; color:var(--green); font-weight:600; }
-  .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:100px; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:16px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column; }
+  .card-body{ padding:20px; flex:1; }
+  .card-name{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:17px; }
+  .card-domain{ font-size:13px; color:var(--ink-soft); margin-top:3px; }
+  .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:100px; margin-top:14px; }
   .pill-green{ background:var(--green-bg); color:var(--green); }
   .pill-amber{ background:var(--amber-tint-strong); color:var(--amber-dark); }
+  .pill .dot{ width:6px;height:6px;border-radius:50%; background:currentColor; }
+  .card-actions{ display:flex; gap:8px; padding:14px 20px; border-top:1px solid var(--border); background:#FCFBFA; }
+  .card-actions a, .card-actions button{ flex:1; text-align:center; border-radius:9px; padding:9px 12px; font-size:13px; font-weight:600; text-decoration:none; cursor:pointer; border:1px solid var(--border); background:var(--surface); color:var(--ink); }
+  .card-actions .open{ background:var(--amber); border-color:var(--amber); }
+  .card-actions .open:hover{ background:var(--amber-dark); }
+  .card-actions a[aria-disabled="true"]{ opacity:.5; pointer-events:none; }
+  .empty, .loading{ color:var(--ink-soft); font-size:14px; padding:40px 0; text-align:center; }
 
-  .lower-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  .panel{ background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; }
-  .panel-head{ padding:18px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  .panel-head h3{ font-size:15px; margin:0; display:flex; align-items:center; gap:8px; }
-  .panel-head a{ font-size:12px; color:var(--amber-dark); text-decoration:none; font-weight:600; }
-  .panel-body{ padding:6px 0; }
-  .activity-item{ display:flex; gap:12px; padding:12px 20px; align-items:flex-start; }
-  .activity-dot{ width:8px;height:8px;border-radius:50%; background:var(--amber); margin-top:6px; flex-shrink:0; }
-  .activity-text{ font-size:13.5px; }
-  .activity-time{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
-  .seo-item{ display:flex; align-items:center; justify-content:space-between; padding:12px 20px; gap:12px; }
-  .seo-item + .seo-item{ border-top:1px solid var(--border); }
-  .seo-text{ font-size:13.5px; }
-  .seo-sub{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
-  .apply-btn{ border:1px solid var(--amber); color:var(--amber-dark); background:#fff; font-size:12px; font-weight:600; padding:6px 12px; border-radius:8px; cursor:not-allowed; white-space:nowrap; opacity:.7; }
-
-  footer{ text-align:center; margin-top:32px; color:var(--ink-soft); font-size:12px; }
-  footer b{ color:var(--ink); }
-
-  @media (max-width:860px){
-    .hero{ grid-template-columns:1fr; }
-    .stats-grid{ grid-template-columns:repeat(2,1fr); }
-    .lower-grid{ grid-template-columns:1fr; }
-  }
+  .modal-overlay{ position:fixed; inset:0; background:rgba(31,36,46,0.45); display:none; align-items:center; justify-content:center; padding:24px; z-index:60; }
+  .modal-overlay.open{ display:flex; }
+  .modal{ width:100%; max-width:420px; background:var(--surface); border-radius:16px; box-shadow:0 24px 60px rgba(15,23,42,0.28); padding:24px; }
+  .modal h3{ margin:0 0 4px; font-size:18px; }
+  .modal p{ margin:0 0 18px; font-size:13px; color:var(--ink-soft); }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px; }
+  .field input{ width:100%; border:1px solid var(--border); border-radius:10px; padding:11px 13px; font-family:'Inter',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); }
+  .field input:focus{ outline:none; border-color:var(--amber); }
+  .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:6px; }
+  .modal-actions .cancel{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 16px; font-weight:600; font-size:13px; cursor:pointer; }
+  footer{ text-align:center; margin-top:36px; color:var(--ink-soft); font-size:12px; }
 </style>
 </head>
 <body>
 <div class="app">
-
   <div class="topbar">
     <div class="brand">
-      <div class="brand-mark">
-        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/>
-        </svg>
-      </div>
-      <div>
-        <div class="brand-name">2Labs Sites</div>
-        <div class="brand-sub">powered by 2Labs Advisory</div>
-      </div>
+      <div class="brand-mark"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2.5" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg></div>
+      <div class="brand-name">2Labs<span>Sites</span></div>
     </div>
     <div class="topbar-right">
-      <div class="org-pill">
-        <div class="org-avatar">{orgInitials}</div>
-        {brand.orgName}
-      </div>
-      <a class="icon-btn" href={`https://${brand.domain}`} target="_blank" rel="noopener" title="About 2Labs">?</a>
-      <button class="icon-btn" id="signOut" title="Sign out" aria-label="Sign out">⎋</button>
+      <div class="userpill"><span class="avatar" id="userAvatar">·</span> <span id="userEmail">…</span></div>
+      <button class="icon-btn" id="signOut">Sign out</button>
     </div>
   </div>
 
-  <div class="hero">
-    <div>
-      <div class="hero-eyebrow"><span class="status-dot"></span> Live · production is up to date</div>
-      <h1 id="greeting">Welcome back</h1>
-      <div class="hero-url"><span>{brand.domain}</span> is live · edits stage for review before they publish</div>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="/editor">Open Editor →</a>
-        <a class="btn btn-ghost" href={LIVE_URL} target="_blank" rel="noopener">View Live Site</a>
-      </div>
-    </div>
-    <div class="preview-frame">
-      <div class="preview-chrome"><span></span><span></span><span></span><div class="preview-url">{brand.domain}</div></div>
-      <iframe class="preview-thumb" src={LIVE_URL} title="Live site preview" scrolling="no" tabindex="-1"></iframe>
-    </div>
+  <div class="head">
+    <h1>Your sites</h1>
+    <button class="btn-primary" id="newSiteBtn">+ New site</button>
   </div>
 
-  <div class="sample-note">
-    <span>ℹ️</span>
-    <span><b>Sample data below.</b> Traffic, site-health, activity, and SEO figures are illustrative placeholders — live GA4 analytics and the SEO engine connect in a later phase.</span>
-  </div>
+  <div id="sitesGrid" class="grid"><div class="loading">Loading your sites…</div></div>
 
-  <div class="stats-grid">
-    <div class="card">
-      <div class="card-label">Visitors this week <span class="tag-sample">Sample</span></div>
-      <div class="card-value">1,284</div>
-      <div class="card-delta up">↑ 18% vs last week</div>
-      <svg class="sparkline" width="100%" height="28" viewBox="0 0 120 28">
-        <polyline points="0,22 20,18 40,20 60,10 80,14 100,4 120,8" fill="none" stroke="#2F8558" stroke-width="2"/>
-      </svg>
-    </div>
+  <footer>2Labs Sites — proudly Canadian-owned 🍁</footer>
+</div>
 
-    <div class="card">
-      <div class="card-label">Site health <span class="tag-sample">Sample</span></div>
-      <div class="ring-wrap">
-        <svg class="ring" viewBox="0 0 56 56">
-          <circle cx="28" cy="28" r="24" fill="none" stroke="#EFEBE4" stroke-width="6"/>
-          <circle cx="28" cy="28" r="24" fill="none" stroke="#2F8558" stroke-width="6" stroke-dasharray="150.8" stroke-dashoffset="21" stroke-linecap="round" transform="rotate(-90 28 28)"/>
-        </svg>
-        <div>
-          <div class="ring-score">86</div>
-          <div class="ring-score-label">Good</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-label">Last build <span class="tag-sample">Sample</span></div>
-      <div class="card-value" style="font-size:20px;">2 hrs ago</div>
-      <span class="pill pill-green" style="margin-top:10px;">● Deployed successfully</span>
-    </div>
-
-    <div class="card">
-      <div class="card-label">Edits this month <span class="tag-sample">Sample</span></div>
-      <div class="card-value">11</div>
-      <div class="card-delta" style="color:var(--ink-soft);">$0.34 in AI usage</div>
+<div class="modal-overlay" id="newSiteModal">
+  <div class="modal">
+    <h3>New site</h3>
+    <p>Give it a name and domain. You'll connect its GitHub repo in Settings.</p>
+    <div class="field"><label for="nsName">Site name</label><input id="nsName" placeholder="Acme Nonprofit" /></div>
+    <div class="field"><label for="nsDomain">Domain</label><input id="nsDomain" placeholder="acme.org" /></div>
+    <div class="modal-actions">
+      <button class="cancel" id="nsCancel">Cancel</button>
+      <button class="btn-primary" id="nsCreate">Create site</button>
     </div>
   </div>
-
-  <div class="lower-grid">
-    <div class="panel">
-      <div class="panel-head">
-        <h3>Recent activity <span class="tag-sample">Sample</span></h3>
-        <a href="#">View all</a>
-      </div>
-      <div class="panel-body">
-        <div class="activity-item">
-          <div class="activity-dot"></div>
-          <div>
-            <div class="activity-text">Updated the hero subheading on the <b>Home</b> page</div>
-            <div class="activity-time">Today · Staged</div>
-          </div>
-        </div>
-        <div class="activity-item">
-          <div class="activity-dot"></div>
-          <div>
-            <div class="activity-text">Added an announcement line under the hero</div>
-            <div class="activity-time">Today · Staged</div>
-          </div>
-        </div>
-        <div class="activity-item">
-          <div class="activity-dot"></div>
-          <div>
-            <div class="activity-text">Published the Phase 0 homepage</div>
-            <div class="activity-time">Jul 14 · Live</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h3>SEO recommendations <span class="tag-sample">Sample</span></h3>
-        <span class="pill pill-amber">3 open</span>
-      </div>
-      <div class="panel-body">
-        <div class="seo-item">
-          <div>
-            <div class="seo-text">Contact page is missing a meta description</div>
-            <div class="seo-sub">Helps Google show a better preview in search</div>
-          </div>
-          <button class="apply-btn" disabled title="One-click apply arrives with the SEO engine">Apply</button>
-        </div>
-        <div class="seo-item">
-          <div>
-            <div class="seo-text">2 images missing alt text on Programs page</div>
-            <div class="seo-sub">Improves accessibility and image search</div>
-          </div>
-          <button class="apply-btn" disabled title="One-click apply arrives with the SEO engine">Apply</button>
-        </div>
-        <div class="seo-item">
-          <div>
-            <div class="seo-text">Homepage title could better reflect your mission</div>
-            <div class="seo-sub">Current: "{`Home | ${brand.orgName}`}"</div>
-          </div>
-          <button class="apply-btn" disabled title="One-click apply arrives with the SEO engine">Apply</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <footer>2Labs Sites — <b>proudly Canadian-owned</b> 🍁</footer>
-
 </div>
 
 <script>
-  // Time-of-day greeting (client-side so it reflects the viewer's time).
-  const h = new Date().getHours();
-  const part = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
-  document.getElementById('greeting').textContent = part;
+  const TOKEN_KEY = '2labs_sites_token';
+  const authToken = () => localStorage.getItem(TOKEN_KEY);
+  const signOut = () => { localStorage.removeItem(TOKEN_KEY); location.replace('/login'); };
+  document.getElementById('signOut').addEventListener('click', signOut);
 
-  // Sign out: clear the session token and return to login.
-  document.getElementById('signOut').addEventListener('click', () => {
-    localStorage.removeItem('2labs_sites_token');
-    location.replace('/login');
+  function apiFetch(path, opts = {}) {
+    return fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-2labs-session': authToken() || '', 'Authorization': 'Bearer ' + (authToken() || ''), ...(opts.headers || {}) } });
+  }
+
+  const grid = document.getElementById('sitesGrid');
+
+  function statusPill(site) {
+    return site.editable
+      ? '<span class="pill pill-green"><span class="dot"></span> Ready to edit</span>'
+      : '<span class="pill pill-amber"><span class="dot"></span> Connect repo</span>';
+  }
+
+  function renderSites(sites) {
+    if (!sites.length) { grid.innerHTML = '<div class="empty">No sites yet — create your first one.</div>'; return; }
+    grid.innerHTML = '';
+    for (const s of sites) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="card-body">' +
+          '<div class="card-name"></div>' +
+          '<div class="card-domain"></div>' +
+          statusPill(s) +
+        '</div>' +
+        '<div class="card-actions">' +
+          '<a class="open" ' + (s.editable ? '' : 'aria-disabled="true"') + ' href="/editor?site=' + encodeURIComponent(s.slug) + '">Open editor</a>' +
+          '<a href="/site-settings?site=' + encodeURIComponent(s.slug) + '">Settings</a>' +
+        '</div>';
+      card.querySelector('.card-name').textContent = s.name;
+      card.querySelector('.card-domain').textContent = s.domain || '(no domain set)';
+      grid.appendChild(card);
+    }
+  }
+
+  async function loadSites() {
+    try {
+      const res = await apiFetch('/api/list-sites');
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { signOut(); return; }
+      if (data.status === 'ok') renderSites(data.sites || []);
+      else grid.innerHTML = '<div class="empty">Could not load your sites.</div>';
+    } catch (e) { grid.innerHTML = '<div class="empty">Could not reach the service.</div>'; }
+  }
+
+  // New-site modal
+  const modal = document.getElementById('newSiteModal');
+  document.getElementById('newSiteBtn').addEventListener('click', () => modal.classList.add('open'));
+  document.getElementById('nsCancel').addEventListener('click', () => modal.classList.remove('open'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+  document.getElementById('nsCreate').addEventListener('click', async () => {
+    const name = document.getElementById('nsName').value.trim();
+    const domain = document.getElementById('nsDomain').value.trim();
+    if (!name) return;
+    const btn = document.getElementById('nsCreate'); btn.disabled = true; btn.textContent = 'Creating…';
+    try {
+      const res = await apiFetch('/api/save-site', { method: 'POST', body: JSON.stringify({ name, domain }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { signOut(); return; }
+      if (data.status === 'ok' && data.site) { location.href = '/site-settings?site=' + encodeURIComponent(data.site.slug); return; }
+    } catch (e) {}
+    btn.disabled = false; btn.textContent = 'Create site';
   });
-</script>
 
+  // User pill from the session (best-effort: token is opaque, so show a generic identity)
+  document.getElementById('userEmail').textContent = 'Signed in';
+  document.getElementById('userAvatar').textContent = '2L';
+
+  loadSites();
+</script>
 </body>
 </html>
