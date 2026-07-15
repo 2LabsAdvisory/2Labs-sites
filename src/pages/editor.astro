@@ -274,13 +274,37 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
 
     addAssistant(`Hi 👋 I'm your 2Labs studio AI. I can edit ${orgName}'s site or add new pages — I'll write the content, wire it into the navigation, and follow SEO/UX best practices. Describe what you want (paste in any copy or notes to build from), and I'll show it in the preview. When it looks right, hit Publish Changes.`, { time: '' });
 
+    // Injected into every previewed page so internal nav links render the
+    // target DRAFT page in-place (instead of navigating the iframe to the SWA
+    // origin, which 404s for unpublished pages). External links open in a tab.
+    const NAV_SCRIPT = '<scr' + 'ipt>(function(){document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a");if(!a)return;var href=a.getAttribute("href");if(!href||href[0]==="#"||/^(mailto:|tel:)/i.test(href))return;e.preventDefault();if(/^https?:\\/\\//i.test(href)||a.target==="_blank"){window.open(href,"_blank");return;}parent.postMessage({__2labs:true,type:"navigate",href:href},"*");},true);document.addEventListener("submit",function(e){e.preventDefault();},true);})();</scr' + 'ipt>';
+    function injectNav(html) { return html.includes('</body>') ? html.replace('</body>', NAV_SCRIPT + '</body>') : html + NAV_SCRIPT; }
+    function renderIntoPreview(html) { lastHtml = html; iframe.removeAttribute('src'); iframe.srcdoc = injectNav(html); }
+
     function setPreviewHtml(html) {
-      lastHtml = html;
-      iframe.removeAttribute('src'); iframe.srcdoc = html;
+      renderIntoPreview(html);
       previewUrl.textContent = document.querySelector('.site-name').textContent + ' — draft (unpublished)';
       statusDot.classList.remove('clean'); statusText.textContent = 'Unpublished changes';
     }
-    function refreshPreview() { if (lastHtml != null) iframe.srcdoc = lastHtml; else iframe.src = LIVE_URL + '/?t=' + Date.now(); }
+    function refreshPreview() { if (lastHtml != null) renderIntoPreview(lastHtml); else iframe.src = LIVE_URL + '/?t=' + Date.now(); }
+
+    // Render a draft page by URL path when a nav link is clicked in the preview.
+    async function navigatePreview(href) {
+      setPreviewWorking(true);
+      try {
+        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: href }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { setTimeout(signOut, 200); return; }
+        if (data.status === 'ok' && typeof data.html === 'string') { renderIntoPreview(data.html); setPreviewLabel(data.file); }
+        else if (data.status === 'not_found') { addAssistant(data.message || `That page doesn't exist yet — ask me to create it.`); }
+        else { addAssistant(data.detail ? `Preview failed — ${data.detail}` : 'Could not open that page.', { error: true }); }
+      } catch (err) { addAssistant('Could not open that page in the preview.', { error: true }); }
+      finally { setPreviewWorking(false); }
+    }
+    window.addEventListener('message', (e) => {
+      const d = e.data;
+      if (d && d.__2labs === true && d.type === 'navigate') navigatePreview(d.href);
+    });
     function setBusy(state) { busy = state; sendBtn.disabled = state; input.disabled = state; }
     function setCanRevert(v) { revertBtn.disabled = !v; }
     function setPreviewWorking(v) { previewFrame.classList.toggle('working', v); }
