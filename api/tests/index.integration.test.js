@@ -18,6 +18,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 <BaseLayout title="Home" description="desc"><h1>Do More Good</h1></BaseLayout>`;
 
 const toolResp = (input) => [{ type: 'tool_use', name: 'apply_site_changes', input }];
+const editResp = (input) => [{ type: 'tool_use', name: 'edit_files', input }];
 const textResp = (text) => [{ type: 'text', text }];
 
 class FakeAnthropic {
@@ -100,6 +101,25 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     assert.strictEqual(res.body.primary, 'src/pages/services.astro');
     assert.strictEqual(saveCalls.length, 2);
     assert.deepStrictEqual(res.body.files.sort(), ['src/components/Header.astro', 'src/pages/services.astro']);
+  });
+
+  await check('targeted edit_files → applies replacement, saves full file', async () => {
+    nextResponse = editResp({ summary: 'Swapped the headline.', primary_path: 'src/pages/index.astro', edits: [{ path: 'src/pages/index.astro', old_string: 'Do More Good', new_string: 'Do Even More Good' }] });
+    const res = await invoke({ prompt: 'change the headline' });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.status, 'ok');
+    assert.deepStrictEqual(res.body.files, ['src/pages/index.astro']);
+    assert.strictEqual(saveCalls.length, 1);
+    assert.match(saveCalls[0].content, /Do Even More Good/);
+    assert.ok(!saveCalls[0].content.includes('Do More Good'), 'original text should be gone');
+  });
+
+  await check('edit_files with text that is not present → 500 and NO save', async () => {
+    nextResponse = editResp({ summary: 'x', primary_path: 'src/pages/index.astro', edits: [{ path: 'src/pages/index.astro', old_string: 'NONEXISTENT SNIPPET', new_string: 'y' }] });
+    const res = await invoke({ prompt: 'change something not there' });
+    assert.strictEqual(res.status, 500);
+    assert.match(res.body.detail, /Couldn't find/);
+    assert.strictEqual(saveCalls.length, 0);
   });
 
   await check('disallowed path (builder app page) → 500 and NO save', async () => {

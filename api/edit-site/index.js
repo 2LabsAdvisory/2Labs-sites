@@ -63,6 +63,36 @@ const APPLY_TOOL = {
   },
 };
 
+// Targeted edits: exact text replacement in EXISTING files. Tiny output (just
+// the changed snippets) vs. rewriting whole files, so it's dramatically faster
+// — the right tool for localized changes (swap an image, tweak copy/style).
+const EDIT_TOOL = {
+  name: 'edit_files',
+  description:
+    'Make small, localized changes to EXISTING files by exact text replacement. STRONGLY PREFER this over apply_site_changes for anything short of a new page or major restructure — swapping an image, editing copy, changing a style, updating a link — because it is far faster than rewriting whole files. Use apply_site_changes only to create new pages or do large rewrites.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'A friendly 1–2 sentence summary of what you changed, in a boutique-studio voice.' },
+      primary_path: { type: 'string', description: 'Repo-relative path of the page to show in the preview.' },
+      edits: {
+        type: 'array',
+        description: 'Each edit replaces an exact snippet of existing file text with new text.',
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Repo-relative file path to edit (must already exist).' },
+            old_string: { type: 'string', description: 'The exact existing text to replace — include enough surrounding context to be unambiguous.' },
+            new_string: { type: 'string', description: 'The replacement text.' },
+          },
+          required: ['path', 'old_string', 'new_string'],
+        },
+      },
+    },
+    required: ['summary', 'primary_path', 'edits'],
+  },
+};
+
 module.exports = async function (context, req) {
   const sessionEmail = await validateSessionEmail(getBearerToken(req));
   if (!sessionEmail || !isEmailAllowed(sessionEmail)) {
@@ -109,8 +139,8 @@ module.exports = async function (context, req) {
         max_tokens: 16000,
         thinking: { type: 'disabled' },
         system: buildSystemPrompt(brand, org),
-        tools: [APPLY_TOOL],
-        tool_choice: { type: 'tool', name: 'apply_site_changes' },
+        tools: [EDIT_TOOL, APPLY_TOOL],
+        tool_choice: { type: 'any' },
         messages: [{ role: 'user', content: [...attachmentBlocks, { type: 'text', text: buildUserMessage(prompt, context_files, attachments) }] }],
       });
       response = await stream.finalMessage();
@@ -119,11 +149,16 @@ module.exports = async function (context, req) {
     }
     context.log(`[edit-site] anthropic ${Date.now() - tGen}ms, stop=${response.stop_reason}`);
 
-    const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && b.name === 'apply_site_changes');
+    const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && (b.name === 'edit_files' || b.name === 'apply_site_changes'));
     if (!toolUse || !toolUse.input) throw new Error('The AI did not return any file changes. Try rephrasing.');
 
     const { summary, primary_path } = toolUse.input;
-    const files = Array.isArray(toolUse.input.files) ? toolUse.input.files : [];
+    // Both tools converge on a list of {path, content}: apply_site_changes gives
+    // full contents; edit_files gives snippet replacements we apply to current
+    // content. The rest of the pipeline (validate → render → save) is identical.
+    const files = toolUse.name === 'edit_files'
+      ? await applyTargetedEdits(toolUse.input.edits)
+      : (Array.isArray(toolUse.input.files) ? toolUse.input.files : []);
     if (files.length === 0) throw new Error('No file changes were produced.');
 
     // 3. Validate every path is inside the client site (never the app or API).
@@ -189,6 +224,34 @@ module.exports = async function (context, req) {
 
 // ---- helpers ---------------------------------------------------------------
 
+/**
+ * Apply edit_files snippet replacements to current draft-or-disk content,
+ * returning full {path, content} for each touched file. Edits to the same file
+ * compound in order. Errors clearly if a snippet isn't found so the model (or
+ * user) can retry — a bad match must never silently drop the change.
+ */
+async function applyTargetedEdits(edits) {
+  if (!Array.isArray(edits) || edits.length === 0) throw new Error('No edits were produced.');
+  const byPath = new Map();
+  for (const e of edits) {
+    if (!e || !isEditablePath(e.path)) throw new Error(`Not allowed to edit "${e && e.path}".`);
+    if (typeof e.old_string !== 'string' || typeof e.new_string !== 'string' || e.old_string === '') {
+      throw new Error('An edit was missing its search or replacement text.');
+    }
+    if (!byPath.has(e.path)) {
+      const cur = await effectiveContent(e.path);
+      if (cur == null) throw new Error(`Can't edit "${e.path}" — that page doesn't exist yet.`);
+      byPath.set(e.path, cur);
+    }
+    const content = byPath.get(e.path);
+    if (!content.includes(e.old_string)) {
+      throw new Error(`Couldn't find the exact text to replace in ${e.path}. Try describing the change and I'll rewrite the section.`);
+    }
+    byPath.set(e.path, content.split(e.old_string).join(e.new_string)); // replace all occurrences
+  }
+  return [...byPath.entries()].map(([path, content]) => ({ path, content }));
+}
+
 /** May the AI write this path? Client-site source only; never the app/API. */
 function isEditablePath(p) {
   if (typeof p !== 'string') return false;
@@ -246,7 +309,7 @@ function buildUserMessage(prompt, contextFiles, attachments = []) {
   parts.push(
     `Request: ${prompt || '(no text — act on the attached file(s) per their intent)'}`,
     '',
-    'Call apply_site_changes with the complete content of every file you create or modify.'
+    'For a localized change, call edit_files with targeted old_string→new_string replacements. For a new page or large rewrite, call apply_site_changes with complete file contents.'
   );
   return parts.join('\n');
 }
@@ -303,7 +366,10 @@ function buildSystemPrompt(brand, org) {
     '- Wire it into the navigation by editing src/components/Header.astro (add a nav link to the new page).',
     '- Set primary_path to the new page so it shows in the preview.',
     '',
-    'Return your work by calling apply_site_changes with the COMPLETE content of every file you create or modify.',
+    'Choosing a tool (IMPORTANT for speed):',
+    '- For localized changes to an existing page — swapping an image, editing copy, changing a color/style, updating a link — call edit_files with small, exact old_string→new_string replacements. Include enough surrounding text in old_string to match uniquely. This is much faster; use it whenever you are not creating a new page or doing a large rewrite.',
+    '- Only use apply_site_changes (full file contents) to create a new page or when a change is too sweeping for targeted edits.',
+    '- When replacing an image, edit the exact <img …> (or CSS url(…)) to point at the provided hosted URL.',
   ].join('\n');
 }
 
