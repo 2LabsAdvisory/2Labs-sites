@@ -367,6 +367,17 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       const d = e.data;
       if (d && d.__2labs === true && d.type === 'navigate') navigatePreview(d.href);
     });
+    // Re-render the currently previewed page's saved draft (used after an edit
+    // whose response didn't reach us — e.g. a slow request the gateway cut off —
+    // so a change that DID save still shows without a manual refresh).
+    async function refreshCurrentPreview() {
+      try {
+        const route = (pageSelect && pageSelect.value) || '/';
+        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: route }) });
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'ok' && typeof data.html === 'string') { renderIntoPreview(data.html); setPreviewLabel(data.file); setStatus(!!data.hasDrafts); setCanRevert(!!data.hasDrafts); }
+      } catch (e) { /* best-effort */ }
+    }
     function setBusy(state) { busy = state; sendBtn.disabled = state; input.disabled = state; const ab = document.getElementById('attachBtn'); if (ab) ab.disabled = state || uploading > 0; }
     function setCanRevert(v) { revertBtn.disabled = !v; }
     function setPreviewWorking(v, label) {
@@ -439,7 +450,10 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
         const data = await res.json().catch(() => ({}));
         thinking.el.remove();
         if (res.status === 401) { addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
-        if (!res.ok) { const m = data.detail ? `${data.error || 'Error'} — ${data.detail}` : (data.error || `Something went wrong (HTTP ${res.status}).`); addAssistant(m, { error: true }); return; }
+        if (!res.ok) {
+          if (res.status >= 500) { addAssistant('That took too long to confirm. If the change went through, it’ll appear on the left in a moment…', { error: true }); refreshCurrentPreview(); loadPages(); refreshCredits(); return; }
+          const m = data.detail ? `${data.error || 'Error'} — ${data.detail}` : (data.error || `Something went wrong (HTTP ${res.status}).`); addAssistant(m, { error: true }); return;
+        }
         if (data.status === 'no_change') { addAssistant('That didn’t change anything — the content already matches. Try describing it differently.'); return; }
         if (data.status === 'ok' && typeof data.html === 'string') {
           setPreviewHtml(data.html);
@@ -457,7 +471,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
           chip.append(dot, txt); m.bubble.appendChild(chip); scrollDown(); return;
         }
         addAssistant('Unexpected response from the server.', { error: true });
-      } catch (err) { thinking.el.remove(); addAssistant('Could not reach the editor service. Check your connection and try again.', { error: true }); }
+      } catch (err) { thinking.el.remove(); addAssistant('That took too long to confirm. If the change went through, it’ll appear on the left in a moment…', { error: true }); refreshCurrentPreview(); loadPages(); refreshCredits(); }
       finally { setBusy(false); setPreviewWorking(false); }
     }
     function send() {
