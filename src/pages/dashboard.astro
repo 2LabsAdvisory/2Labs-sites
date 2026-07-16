@@ -42,23 +42,34 @@ import brand from '../../site-config/brand.json';
   .btn-primary{ background:var(--amber); color:var(--ink); border:none; border-radius:10px; padding:11px 18px; font-weight:600; font-size:14px; cursor:pointer; }
   .btn-primary:hover{ background:var(--amber-dark); }
 
-  .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:16px; }
-  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column; }
-  .card-body{ padding:20px; flex:1; display:block; text-decoration:none; color:inherit; position:relative; }
-  a.card-body:hover{ background:#FCFBFA; }
-  .card-open-hint{ font-size:12px; font-weight:600; color:var(--amber-dark); margin-top:14px; opacity:0; transition:opacity .15s; }
-  a.card-body:hover .card-open-hint{ opacity:1; }
-  .card-name{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:17px; }
-  .card-domain{ font-size:13px; color:var(--ink-soft); margin-top:3px; }
-  .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:100px; margin-top:14px; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(440px,1fr)); gap:22px; }
+  @media (max-width:520px){ .grid{ grid-template-columns:1fr; } }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column; }
+  .card-body{ padding:26px 28px 22px; flex:1; }
+  .card-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+  .card-name{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:22px; line-height:1.2; }
+  .card-domain{ font-size:14px; color:var(--ink-soft); margin-top:5px; }
+  .card-domain a{ color:var(--amber-dark); text-decoration:none; }
+  .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; padding:5px 11px; border-radius:100px; white-space:nowrap; flex-shrink:0; }
   .pill-green{ background:var(--green-bg); color:var(--green); }
   .pill-amber{ background:var(--amber-tint-strong); color:var(--amber-dark); }
   .pill .dot{ width:6px;height:6px;border-radius:50%; background:currentColor; }
-  .card-actions{ display:flex; gap:8px; padding:14px 20px; border-top:1px solid var(--border); background:#FCFBFA; }
-  .card-actions a, .card-actions button{ flex:1; text-align:center; border-radius:9px; padding:9px 12px; font-size:13px; font-weight:600; text-decoration:none; cursor:pointer; border:1px solid var(--border); background:var(--surface); color:var(--ink); }
-  .card-actions .open{ background:var(--amber); border-color:var(--amber); }
-  .card-actions .open:hover{ background:var(--amber-dark); }
-  .card-actions a[aria-disabled="true"]{ opacity:.5; pointer-events:none; }
+
+  .metrics{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:22px; }
+  .metric{ background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px 10px; text-align:center; }
+  .metric-val{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:24px; line-height:1; color:var(--ink-soft); }
+  .metric-val.good{ color:var(--green); } .metric-val.avg{ color:var(--amber-dark); } .metric-val.poor{ color:#C0392B; }
+  .metric-label{ font-size:11px; font-weight:600; color:var(--ink-soft); margin-top:7px; text-transform:uppercase; letter-spacing:0.03em; }
+  .metric-sub{ font-size:10px; color:var(--ink-soft); margin-top:2px; opacity:.8; }
+  .metric-dot{ display:inline-block; width:8px;height:8px;border-radius:50%; background:#D9D3CD; animation:blink 1s infinite alternate; }
+  @keyframes blink{ to{ opacity:.35; } }
+
+  .card-actions{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:16px 28px 22px; }
+  .card-actions a{ display:flex; align-items:center; justify-content:center; gap:6px; border-radius:11px; padding:12px 10px; font-size:13.5px; font-weight:600; text-decoration:none; cursor:pointer; border:1px solid var(--border); background:var(--surface); color:var(--ink); }
+  .card-actions a:hover{ border-color:var(--ink-soft); }
+  .card-actions a.primary{ background:var(--amber); border-color:var(--amber); }
+  .card-actions a.primary:hover{ background:var(--amber-dark); }
+  .card-actions a[aria-disabled="true"]{ opacity:.45; pointer-events:none; }
   .empty, .loading{ color:var(--ink-soft); font-size:14px; padding:40px 0; text-align:center; }
 
   .modal-overlay{ position:fixed; inset:0; background:rgba(31,36,46,0.45); display:none; align-items:center; justify-content:center; padding:24px; z-index:60; }
@@ -133,6 +144,15 @@ import brand from '../../site-config/brand.json';
       : '<span class="pill pill-amber"><span class="dot"></span> Connect repo</span>';
   }
 
+  const band = (v) => v == null ? '' : (v >= 90 ? 'good' : (v >= 50 ? 'avg' : 'poor'));
+
+  function metricTile(key, label) {
+    return '<div class="metric" data-metric="' + key + '">' +
+      '<div class="metric-val"><span class="metric-dot"></span></div>' +
+      '<div class="metric-label">' + label + '</div>' +
+    '</div>';
+  }
+
   function renderSites(sites) {
     if (!sites.length) { grid.innerHTML = '<div class="empty">No sites yet — create your first one.</div>'; return; }
     grid.innerHTML = '';
@@ -140,20 +160,66 @@ import brand from '../../site-config/brand.json';
       const card = document.createElement('div');
       card.className = 'card';
       const q = encodeURIComponent(s.slug);
+      const url = s.domain ? 'https://' + String(s.domain).replace(/^https?:\/\//, '') : null;
       card.innerHTML =
-        '<a class="card-body" href="/site?site=' + q + '">' +
-          '<div class="card-name"></div>' +
-          '<div class="card-domain"></div>' +
-          statusPill(s) +
-          '<div class="card-open-hint">View overview →</div>' +
-        '</a>' +
+        '<div class="card-body">' +
+          '<div class="card-top">' +
+            '<div><div class="card-name"></div><div class="card-domain"></div></div>' +
+            statusPill(s) +
+          '</div>' +
+          '<div class="metrics">' +
+            metricTile('performance', 'Performance') +
+            metricTile('accessibility', 'Accessibility') +
+            metricTile('seo', 'SEO') +
+            metricTile('views', 'Page views') +
+          '</div>' +
+        '</div>' +
         '<div class="card-actions">' +
-          '<a class="open" ' + (s.editable ? '' : 'aria-disabled="true"') + ' href="/editor?site=' + q + '">Open editor</a>' +
-          '<a href="/site-settings?site=' + q + '">Settings</a>' +
+          '<a class="primary" href="/site?site=' + q + '">📊 Site Analytics</a>' +
+          '<a ' + (s.editable ? '' : 'aria-disabled="true"') + ' href="/editor?site=' + q + '">✎ Open Editor</a>' +
+          '<a href="/site-settings?site=' + q + '">⚙ Site Settings</a>' +
         '</div>';
       card.querySelector('.card-name').textContent = s.name;
-      card.querySelector('.card-domain').textContent = s.domain || '(no domain set)';
+      const dom = card.querySelector('.card-domain');
+      if (url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = s.domain; dom.appendChild(a); }
+      else { dom.textContent = '(no domain set)'; }
       grid.appendChild(card);
+      loadCardMetrics(card, s);
+    }
+  }
+
+  function setMetric(card, key, value, sub) {
+    const tile = card.querySelector('.metric[data-metric="' + key + '"] .metric-val');
+    if (!tile) return;
+    tile.classList.remove('good', 'avg', 'poor');
+    if (value == null) { tile.textContent = '—'; }
+    else { tile.textContent = value; const b = band(typeof value === 'number' ? value : null); if (b) tile.classList.add(b); }
+    const t = card.querySelector('.metric[data-metric="' + key + '"]');
+    let subEl = t.querySelector('.metric-sub');
+    if (sub) { if (!subEl) { subEl = document.createElement('div'); subEl.className = 'metric-sub'; t.appendChild(subEl); } subEl.textContent = sub; }
+    else if (subEl) subEl.remove();
+  }
+
+  // Page views need GA4 (not wired yet) — always show a "connect" hint for now.
+  async function loadCardMetrics(card, s) {
+    setMetric(card, 'views', null, 'Connect GA4');
+    if (!s.domain) {
+      ['performance', 'accessibility', 'seo'].forEach((k) => setMetric(card, k, null, 'Not published'));
+      return;
+    }
+    try {
+      const res = await apiFetch('/api/site-metrics?site=' + encodeURIComponent(s.slug));
+      const data = await res.json().catch(() => ({}));
+      if (data.status === 'ok' && data.scores) {
+        setMetric(card, 'performance', data.scores.performance);
+        setMetric(card, 'accessibility', data.scores.accessibility);
+        setMetric(card, 'seo', data.scores.seo);
+      } else {
+        const hint = data.status === 'not_published' ? 'Not published' : 'Unavailable';
+        ['performance', 'accessibility', 'seo'].forEach((k) => setMetric(card, k, null, hint));
+      }
+    } catch (e) {
+      ['performance', 'accessibility', 'seo'].forEach((k) => setMetric(card, k, null, ''));
     }
   }
 
