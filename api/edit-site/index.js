@@ -20,6 +20,7 @@ const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { getDraftFile, setDraftFile, listDraftFiles, saveUndoManifest } = require('../lib/draftStore');
 const { recordEdit } = require('../lib/usageStore');
+const { getAsset } = require('../lib/assetStore');
 const { renderDraft } = require('../lib/renderDraft');
 const { siteRoot, brand, org } = require('../lib/siteConfig');
 
@@ -70,7 +71,8 @@ module.exports = async function (context, req) {
   }
 
   const prompt = req.body && req.body.prompt;
-  if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+  const attachments = Array.isArray(req.body && req.body.attachments) ? req.body.attachments.slice(0, 6) : [];
+  if ((!prompt || typeof prompt !== 'string' || !prompt.trim()) && attachments.length === 0) {
     context.res = { status: 400, body: { error: 'A non-empty "prompt" string is required.' } };
     return;
   }
@@ -89,6 +91,10 @@ module.exports = async function (context, req) {
       if (c != null) context_files[p] = c;
     }
 
+    // 1b. Load any uploaded photos/PDFs so the model can SEE them (images) or
+    //     READ them (PDFs), and so it embeds images by their hosted URL.
+    const attachmentBlocks = await buildAttachmentBlocks(attachments, context);
+
     // 2. Ask Claude (studio persona) for the file changes via a tool call.
     let response;
     const tGen = Date.now();
@@ -100,7 +106,7 @@ module.exports = async function (context, req) {
         system: buildSystemPrompt(brand, org),
         tools: [APPLY_TOOL],
         tool_choice: { type: 'tool', name: 'apply_site_changes' },
-        messages: [{ role: 'user', content: buildUserMessage(prompt, context_files) }],
+        messages: [{ role: 'user', content: [...attachmentBlocks, { type: 'text', text: buildUserMessage(prompt, context_files, attachments) }] }],
       });
     } catch (e) {
       throw new Error(`anthropic: ${e.message}`);
@@ -208,19 +214,59 @@ async function listSitePages() {
   return [...set].filter((p) => !PROTECTED.has(p));
 }
 
-function buildUserMessage(prompt, contextFiles) {
+function buildUserMessage(prompt, contextFiles, attachments = []) {
   const parts = ['Here is the current site (each file with its full current content):', ''];
   for (const [p, content] of Object.entries(contextFiles)) {
     parts.push(`FILE: ${p}`, '```astro', content, '```', '');
   }
   parts.push(
     'The user may paste source material (copy, notes, or an outline) directly in their request — use it as the basis for the content.',
-    '',
-    `Request: ${prompt}`,
+    ''
+  );
+
+  const imgs = attachments.filter((a) => a && a.type && a.type.startsWith('image/'));
+  const pdfs = attachments.filter((a) => a && a.type === 'application/pdf');
+  if (imgs.length || pdfs.length) {
+    parts.push('The user attached files to use as content (also provided above as image/PDF blocks):');
+    for (const a of imgs) {
+      parts.push(`- IMAGE "${a.name}" is hosted at ${a.url}. To place it, embed it with <img src="${a.url}" alt="…"> (write descriptive alt text). Do NOT inline the bytes or invent a different path — use this exact URL.`);
+    }
+    for (const a of pdfs) {
+      parts.push(`- PDF "${a.name}": read its content and write it into the page as real, well-structured copy. Do not link to the PDF unless the user asks.`);
+    }
+    parts.push('');
+  }
+
+  parts.push(
+    `Request: ${prompt || '(no text — act on the attached file(s) per their intent)'}`,
     '',
     'Call apply_site_changes with the complete content of every file you create or modify.'
   );
   return parts.join('\n');
+}
+
+/** Load uploaded assets as Anthropic content blocks (images = vision, PDFs = document). */
+async function buildAttachmentBlocks(attachments, context) {
+  const blocks = [];
+  for (const a of attachments) {
+    if (!a || !a.id) continue;
+    let asset;
+    try {
+      asset = await getAsset(a.id);
+    } catch (e) {
+      context.log.warn(`[edit-site] attachment ${a.id} load failed: ${e.message}`);
+      continue;
+    }
+    if (!asset) continue;
+    const data = asset.buffer.toString('base64');
+    if (asset.contentType === 'application/pdf') {
+      blocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } });
+    } else if (asset.contentType && asset.contentType.startsWith('image/') && asset.contentType !== 'image/svg+xml') {
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: asset.contentType, data } });
+    }
+    // SVGs aren't a vision media type — the hosted-URL instruction covers them.
+  }
+  return blocks;
 }
 
 /** System prompt: a boutique NYC studio applying content/UX/SEO best practices. */

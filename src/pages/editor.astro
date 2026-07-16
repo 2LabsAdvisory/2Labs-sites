@@ -134,10 +134,25 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   .suggestion-chip{ border:1px solid var(--border); background:var(--surface); border-radius:100px; padding:6px 12px; font-size:11.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; white-space:nowrap; }
   .suggestion-chip:hover{ border-color:var(--amber); color:var(--amber-dark); }
 
-  .chat-input{ border-top:1px solid var(--border); padding:12px 14px; display:flex; align-items:flex-end; gap:8px; flex-shrink:0; }
-  .chat-input textarea{ flex:1; resize:none; border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-family:'Inter',sans-serif; font-size:13.5px; color:var(--ink); background:var(--bg); min-height:40px; max-height:120px; }
+  .chat-input{ border-top:1px solid var(--border); padding:12px 14px; display:flex; flex-direction:column; gap:8px; flex-shrink:0; }
+  .attach-tray{ display:flex; flex-wrap:wrap; gap:8px; }
+  .attach-tray:empty{ display:none; }
+  .attach-chip{ display:flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:6px 8px; font-size:12px; max-width:200px; }
+  .attach-chip img{ width:28px; height:28px; object-fit:cover; border-radius:6px; flex-shrink:0; }
+  .attach-chip .ic{ width:28px; height:28px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+  .attach-chip .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .attach-chip .rm{ margin-left:2px; cursor:pointer; color:var(--ink-soft); border:none; background:none; font-size:15px; line-height:1; padding:0 2px; }
+  .attach-chip .rm:hover{ color:var(--ink); }
+  .attach-chip.uploading{ opacity:.55; }
+  .chat-input-row{ display:flex; align-items:flex-end; gap:8px; }
+  .chat-input textarea{ flex:1; resize:none; border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-family:'Inter',sans-serif; font-size:13.5px; line-height:1.5; color:var(--ink); background:var(--bg); min-height:120px; max-height:320px; }
   .chat-input textarea:focus{ outline:none; border-color:var(--amber); }
   .chat-input textarea:disabled{ opacity:.6; }
+  .attach-btn{ width:38px; height:38px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--ink-soft); cursor:pointer; font-size:16px; flex-shrink:0; }
+  .attach-btn:hover{ border-color:var(--amber); color:var(--ink); }
+  .attach-btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .msg.user .bubble .att{ display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px; opacity:.85; }
+  .msg.user .bubble .att img{ width:22px; height:22px; object-fit:cover; border-radius:5px; }
   .send-btn{ width:38px;height:38px;border-radius:10px; border:none; background:var(--ink); color:var(--amber); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
   .send-btn:disabled{ opacity:.5; cursor:not-allowed; }
 
@@ -233,8 +248,13 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       </div>
 
       <div class="chat-input">
-        <textarea id="promptInput" placeholder="Describe a change, or paste content — e.g. &quot;Add a Services page about…&quot;"></textarea>
-        <button class="send-btn" id="sendBtn" title="Send">↑</button>
+        <div class="attach-tray" id="attachTray"></div>
+        <div class="chat-input-row">
+          <button class="attach-btn" id="attachBtn" title="Attach a photo or PDF to use as content">📎</button>
+          <textarea id="promptInput" placeholder="Describe a change, paste content, or attach a photo/PDF — e.g. &quot;Use this image on the homepage&quot;"></textarea>
+          <button class="send-btn" id="sendBtn" title="Send">↑</button>
+        </div>
+        <input type="file" id="fileInput" accept="image/*,application/pdf" multiple hidden />
       </div>
     </div>
   </div>
@@ -284,6 +304,13 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       const av = document.createElement('div'); av.className = 'avatar'; av.textContent = 'You';
       const col = document.createElement('div'); col.className = 'col';
       const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
+      for (const a of arguments[1] || []) {
+        const r = document.createElement('div'); r.className = 'att';
+        if (a.type && a.type.startsWith('image/')) { const im = document.createElement('img'); im.src = a.url; r.appendChild(im); }
+        else { const ic = document.createElement('span'); ic.textContent = '📄'; r.appendChild(ic); }
+        const nm = document.createElement('span'); nm.textContent = a.name; r.appendChild(nm);
+        b.appendChild(r);
+      }
       const t = document.createElement('div'); t.className = 'msg-time'; t.textContent = timeNow();
       col.append(b, t); el.append(av, col); chatBody.appendChild(el); scrollDown();
     }
@@ -331,7 +358,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       const d = e.data;
       if (d && d.__2labs === true && d.type === 'navigate') navigatePreview(d.href);
     });
-    function setBusy(state) { busy = state; sendBtn.disabled = state; input.disabled = state; }
+    function setBusy(state) { busy = state; sendBtn.disabled = state; input.disabled = state; const ab = document.getElementById('attachBtn'); if (ab) ab.disabled = state || uploading > 0; }
     function setCanRevert(v) { revertBtn.disabled = !v; }
     function setPreviewWorking(v, label) {
       if (v && label) { const el = document.getElementById('previewWorkingLabel'); if (el) el.textContent = label; }
@@ -366,14 +393,15 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       el.textContent = 'Previewing: ' + (base === 'index' ? 'Home' : base.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
     }
 
-    async function submit(prompt) {
-      addUser(prompt);
+    async function submit(prompt, atts = []) {
+      addUser(prompt, atts);
       setBusy(true);
       setPreviewWorking(true);
       const thinking = addAssistant('', { time: '' });
       thinking.bubble.innerHTML = '<span class="building"><span class="spinner"></span> Thinking…</span>';
       try {
-        const res = await apiFetch('/api/edit-site', { method: 'POST', body: JSON.stringify({ prompt }) });
+        const attachments = atts.map((a) => ({ id: a.id, url: a.url, name: a.name, type: a.type }));
+        const res = await apiFetch('/api/edit-site', { method: 'POST', body: JSON.stringify({ prompt, attachments }) });
         const data = await res.json().catch(() => ({}));
         thinking.el.remove();
         if (res.status === 401) { addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
@@ -397,9 +425,74 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       } catch (err) { thinking.el.remove(); addAssistant('Could not reach the editor service. Check your connection and try again.', { error: true }); }
       finally { setBusy(false); setPreviewWorking(false); }
     }
-    function send() { const text = input.value.trim(); if (!text || busy) return; input.value = ''; submit(text); }
+    function send() {
+      const text = input.value.trim();
+      if ((!text && pendingAttachments.length === 0) || busy || uploading > 0) return;
+      const atts = pendingAttachments.slice();
+      input.value = ''; pendingAttachments = []; renderTray();
+      submit(text, atts);
+    }
     sendBtn.addEventListener('click', send);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+
+    // ---- Attachments (photo / PDF the AI uses as content) ----
+    let pendingAttachments = [];
+    let uploading = 0;
+    const attachTray = document.getElementById('attachTray');
+    const attachBtn = document.getElementById('attachBtn');
+    const fileInput = document.getElementById('fileInput');
+
+    function renderTray() {
+      attachTray.innerHTML = '';
+      for (const a of pendingAttachments) {
+        const chip = document.createElement('div'); chip.className = 'attach-chip' + (a.uploading ? ' uploading' : '');
+        if (a.preview) { const im = document.createElement('img'); im.src = a.preview; chip.appendChild(im); }
+        else { const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = a.type === 'application/pdf' ? '📄' : '🖼️'; chip.appendChild(ic); }
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = a.uploading ? 'Uploading…' : a.name; chip.appendChild(nm);
+        if (!a.uploading) { const rm = document.createElement('button'); rm.className = 'rm'; rm.textContent = '×'; rm.title = 'Remove'; rm.onclick = () => { pendingAttachments = pendingAttachments.filter((x) => x !== a); renderTray(); }; chip.appendChild(rm); }
+        attachTray.appendChild(chip);
+      }
+    }
+
+    const readAsBase64 = (file) => new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1] || '');
+      r.onerror = () => reject(new Error('read failed'));
+      r.readAsDataURL(file);
+    });
+
+    async function uploadFile(file) {
+      const okType = file.type.startsWith('image/') || file.type === 'application/pdf';
+      if (!okType) { addAssistant(`“${file.name}” isn’t a supported type. Attach a photo (PNG/JPG/WebP/GIF/SVG) or a PDF.`, { error: true }); return; }
+      if (file.size > 8 * 1024 * 1024) { addAssistant(`“${file.name}” is larger than 8 MB. Please attach a smaller file.`, { error: true }); return; }
+      const placeholder = { uploading: true, name: file.name, type: file.type, preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null };
+      pendingAttachments.push(placeholder); uploading++; renderTray(); attachBtn.disabled = true;
+      try {
+        const dataBase64 = await readAsBase64(file);
+        const res = await apiFetch('/api/upload-asset', { method: 'POST', body: JSON.stringify({ name: file.name, type: file.type, dataBase64 }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { signOut(); return; }
+        const i = pendingAttachments.indexOf(placeholder);
+        if (data.status === 'ok' && data.asset) {
+          const a = Object.assign({}, data.asset, { uploading: false, preview: placeholder.preview });
+          if (i !== -1) pendingAttachments[i] = a; else pendingAttachments.push(a);
+        } else {
+          if (i !== -1) pendingAttachments.splice(i, 1);
+          addAssistant(data.error || `Could not upload “${file.name}”.`, { error: true });
+        }
+      } catch (e) {
+        const i = pendingAttachments.indexOf(placeholder); if (i !== -1) pendingAttachments.splice(i, 1);
+        addAssistant(`Could not upload “${file.name}”. Try again.`, { error: true });
+      } finally {
+        uploading--; if (uploading <= 0) attachBtn.disabled = false; renderTray();
+      }
+    }
+
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      for (const f of Array.from(fileInput.files || [])) uploadFile(f);
+      fileInput.value = '';
+    });
     document.getElementById('suggestionRow').addEventListener('click', (e) => { const c = e.target.closest('.suggestion-chip'); if (c) { input.value = c.textContent.trim(); input.focus(); } });
 
     document.querySelectorAll('.viewport-toggle button').forEach((btn) => btn.addEventListener('click', () => {
