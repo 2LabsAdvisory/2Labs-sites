@@ -21,6 +21,7 @@ const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../sha
 const { getDraftFile, setDraftFile, listDraftFiles, saveUndoManifest } = require('../lib/draftStore');
 const { recordEdit } = require('../lib/usageStore');
 const { getAsset } = require('../lib/assetStore');
+const { putResult } = require('../lib/editResultStore');
 const { renderDraft } = require('../lib/renderDraft');
 const { siteRoot, brand, org } = require('../lib/siteConfig');
 
@@ -102,6 +103,9 @@ module.exports = async function (context, req) {
 
   const prompt = req.body && req.body.prompt;
   const attachments = Array.isArray(req.body && req.body.attachments) ? req.body.attachments.slice(0, 6) : [];
+  // The client sends a requestId so it can poll for the result if this request
+  // outlives the gateway's client-side timeout (page creation can take ~80s).
+  const requestId = req.body && req.body.requestId;
   if ((!prompt || typeof prompt !== 'string' || !prompt.trim()) && attachments.length === 0) {
     context.res = { status: 400, body: { error: 'A non-empty "prompt" string is required.' } };
     return;
@@ -205,20 +209,25 @@ module.exports = async function (context, req) {
       context.log.warn('[edit-site] usage record failed:', e.message);
     }
 
-    context.res = {
-      status: 200,
-      body: {
-        status: 'ok',
-        summary: summary || 'Updated your site.',
-        files: files.map((f) => f.path),
-        primary,
-        html,
-        credits: usage ? { used: usage.edits, period: usage.period } : null,
-      },
+    const okBody = {
+      status: 'ok',
+      summary: summary || 'Updated your site.',
+      files: files.map((f) => f.path),
+      primary,
+      html,
+      credits: usage ? { used: usage.edits, period: usage.period } : null,
     };
+    // Persist so a client whose POST timed out can still fetch the result.
+    if (requestId) {
+      try { await putResult(sessionEmail, requestId, okBody); }
+      catch (e) { context.log.warn('[edit-site] result store failed: ' + e.message); }
+    }
+    context.res = { status: 200, body: okBody };
   } catch (err) {
     context.log.error(err);
-    context.res = { status: 500, body: { error: 'Edit failed.', detail: err.message } };
+    const errBody = { status: 'error', error: 'Edit failed.', detail: err.message };
+    if (requestId) { try { await putResult(sessionEmail, requestId, errBody); } catch (e) { /* best-effort */ } }
+    context.res = { status: 500, body: errBody };
   }
 };
 

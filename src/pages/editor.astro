@@ -438,41 +438,69 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     }
     pageSelect.addEventListener('change', () => { if (pageSelect.value) navigatePreview(pageSelect.value); });
 
+    // Apply a completed edit (whether it returned inline or via polling).
+    function applyEditResult(data) {
+      if (typeof data.html === 'string') { setPreviewHtml(data.html); setPreviewLabel(data.primary); }
+      setCanRevert(true);
+      refreshCredits();
+      loadPages(fileToRoute(data.primary)); // a new page may have been created
+      const m = addAssistant(data.summary || 'Done — updated your site. The preview is live on the left.');
+      const files = Array.isArray(data.files) ? data.files : [];
+      const nice = files.map((f) => f.replace('src/pages/', '').replace('src/components/', '').replace('.astro', '')).join(', ');
+      const chip = document.createElement('div'); chip.className = 'diff-chip';
+      const dot = document.createElement('span'); dot.className = 'dot';
+      const txt = document.createElement('span');
+      txt.innerHTML = files.length ? `<b>Updated:</b> ${nice}. Publish when it looks right, or Revert to undo.` : '<b>Draft updated.</b> Publish when it looks right, or Revert to undo.';
+      chip.append(dot, txt); m.bubble.appendChild(chip); scrollDown();
+    }
+
+    // The gateway can cut off a long request (page creation ~80s) before the
+    // function finishes — but the function runs to completion and stores its
+    // result. Poll for it so the change still lands without a manual refresh.
+    async function pollEditResult(requestId, thinking) {
+      thinking.bubble.innerHTML = '<span class="building"><span class="spinner"></span> Still working — a bigger change can take a minute…</span>';
+      const deadline = Date.now() + 180000; // up to 3 min
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        let data;
+        try {
+          const res = await apiFetch('/api/edit-result?id=' + encodeURIComponent(requestId));
+          if (res.status === 401) { signOut(); return; }
+          data = await res.json().catch(() => ({}));
+        } catch (e) { continue; } // network blip — keep polling
+        if (data.status === 'ok') { thinking.el.remove(); applyEditResult(data); return; }
+        if (data.status === 'error') { thinking.el.remove(); addAssistant(data.detail ? `${data.error} — ${data.detail}` : (data.error || 'Edit failed.'), { error: true }); return; }
+        // status 'pending' → still running; keep polling
+      }
+      thinking.el.remove();
+      addAssistant('That took longer than expected. If the change went through it’ll appear in the page list — try selecting the page.', { error: true });
+      refreshCurrentPreview(); loadPages();
+    }
+
     async function submit(prompt, atts = []) {
       addUser(prompt, atts);
       setBusy(true);
       setPreviewWorking(true);
       const thinking = addAssistant('', { time: '' });
       thinking.bubble.innerHTML = '<span class="building"><span class="spinner"></span> Thinking…</span>';
+      const requestId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2));
       try {
         const attachments = atts.map((a) => ({ id: a.id, url: a.url, name: a.name, type: a.type }));
-        const res = await apiFetch('/api/edit-site', { method: 'POST', body: JSON.stringify({ prompt, attachments }) });
+        const res = await apiFetch('/api/edit-site', { method: 'POST', body: JSON.stringify({ prompt, attachments, requestId }) });
         const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { thinking.el.remove(); addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
+        if (res.ok && data.status === 'ok') { thinking.el.remove(); applyEditResult(data); return; }
+        if (res.ok && data.status === 'no_change') { thinking.el.remove(); addAssistant('That didn’t change anything — the content already matches. Try describing it differently.'); return; }
+        // A 5xx here is usually the gateway cutting off a still-running edit —
+        // poll for the result rather than failing.
+        if (res.status >= 500) { await pollEditResult(requestId, thinking); return; }
         thinking.el.remove();
-        if (res.status === 401) { addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
-        if (!res.ok) {
-          if (res.status >= 500) { addAssistant('That took too long to confirm. If the change went through, it’ll appear on the left in a moment…', { error: true }); refreshCurrentPreview(); loadPages(); refreshCredits(); return; }
-          const m = data.detail ? `${data.error || 'Error'} — ${data.detail}` : (data.error || `Something went wrong (HTTP ${res.status}).`); addAssistant(m, { error: true }); return;
-        }
-        if (data.status === 'no_change') { addAssistant('That didn’t change anything — the content already matches. Try describing it differently.'); return; }
-        if (data.status === 'ok' && typeof data.html === 'string') {
-          setPreviewHtml(data.html);
-          setPreviewLabel(data.primary);
-          setCanRevert(true);
-          refreshCredits();
-          loadPages(fileToRoute(data.primary)); // a new page may have been created
-          const m = addAssistant(data.summary || 'Done — updated your site. The preview is live on the left.');
-          const files = Array.isArray(data.files) ? data.files : [];
-          const nice = files.map((f) => f.replace('src/pages/', '').replace('src/components/', '').replace('.astro', '')).join(', ');
-          const chip = document.createElement('div'); chip.className = 'diff-chip';
-          const dot = document.createElement('span'); dot.className = 'dot';
-          const txt = document.createElement('span');
-          txt.innerHTML = files.length ? `<b>Updated:</b> ${nice}. Publish when it looks right, or Revert to undo.` : '<b>Draft updated.</b> Publish when it looks right, or Revert to undo.';
-          chip.append(dot, txt); m.bubble.appendChild(chip); scrollDown(); return;
-        }
-        addAssistant('Unexpected response from the server.', { error: true });
-      } catch (err) { thinking.el.remove(); addAssistant('That took too long to confirm. If the change went through, it’ll appear on the left in a moment…', { error: true }); refreshCurrentPreview(); loadPages(); refreshCredits(); }
-      finally { setBusy(false); setPreviewWorking(false); }
+        if (res.ok) { addAssistant('Unexpected response from the server.', { error: true }); return; }
+        addAssistant(data.detail ? `${data.error || 'Error'} — ${data.detail}` : (data.error || `Something went wrong (HTTP ${res.status}).`), { error: true });
+      } catch (err) {
+        // Network/timeout — the edit may still be running server-side; poll for it.
+        await pollEditResult(requestId, thinking);
+      } finally { setBusy(false); setPreviewWorking(false); }
     }
     function send() {
       const text = input.value.trim();

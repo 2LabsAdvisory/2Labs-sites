@@ -58,6 +58,10 @@ require.cache[require.resolve('../lib/usageStore')] = {
   id: 'usageStore', loaded: true,
   exports: { recordEdit: async () => ({ period: '2026-07', edits: 1 }) },
 };
+require.cache[require.resolve('../lib/editResultStore')] = {
+  id: 'editResultStore', loaded: true,
+  exports: { putResult: async () => {}, getResult: async () => null },
+};
 
 process.env.ANTHROPIC_API_KEY = 'test';
 const handler = require(path.join(__dirname, '..', 'edit-site', 'index.js'));
