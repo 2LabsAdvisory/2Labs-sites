@@ -67,6 +67,10 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   .preview-pages button.active{ background:var(--ink); color:#fff; }
   .preview-pages button:disabled{ opacity:.5; cursor:not-allowed; }
   .preview-label{ font-size:12.5px; font-weight:600; color:var(--ink-soft); }
+  .preview-left{ display:flex; align-items:center; gap:10px; }
+  .page-select{ font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600; color:var(--ink); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 26px 6px 10px; cursor:pointer; appearance:none; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23676F7E' stroke-width='1.5' stroke-linecap='round'/></svg>"); background-repeat:no-repeat; background-position:right 9px center; }
+  .page-select:hover{ border-color:var(--ink-soft); }
+  .page-select:focus{ outline:none; border-color:var(--amber); }
   .preview-controls{ display:flex; align-items:center; gap:10px; }
   .refresh-btn{ width:32px;height:32px;border-radius:8px;border:1px solid var(--border); background:var(--surface); color:var(--ink-soft); cursor:pointer; font-size:14px; display:flex;align-items:center;justify-content:center; }
   .refresh-btn:hover{ color:var(--ink); }
@@ -204,7 +208,12 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
   <div class="main">
     <div class="preview-col">
       <div class="preview-toolbar">
-        <div class="preview-label" id="previewLabel">Live preview</div>
+        <div class="preview-left">
+          <div class="preview-label" id="previewLabel">Live preview</div>
+          <select class="page-select" id="pageSelect" title="Jump to a page" aria-label="Preview a page">
+            <option value="">All pages…</option>
+          </select>
+        </div>
         <div class="preview-controls">
           <button class="refresh-btn" id="refreshBtn" title="Refresh preview">⟳</button>
           <div class="viewport-toggle">
@@ -386,12 +395,37 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       } catch (err) { iframe.src = LIVE_URL; }
       finally { setPreviewWorking(false); }
     }
+    function fileToRoute(file) {
+      let p = String(file || '').replace('src/pages/', '').replace('.astro', '');
+      if (p === 'index') return '/';
+      if (p.endsWith('/index')) p = p.slice(0, -6);
+      return '/' + p;
+    }
     function setPreviewLabel(primaryPath) {
       const el = document.getElementById('previewLabel');
       if (!primaryPath) { el.textContent = 'Live preview'; return; }
       const base = primaryPath.replace('src/pages/', '').replace('.astro', '');
       el.textContent = 'Previewing: ' + (base === 'index' ? 'Home' : base.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+      // Keep the page selector in sync with what's shown.
+      const route = fileToRoute(primaryPath);
+      if ([...pageSelect.options].some((o) => o.value === route)) pageSelect.value = route;
     }
+
+    // ---- Page selector (jump the preview to any page) ----
+    const pageSelect = document.getElementById('pageSelect');
+    async function loadPages(selectRoute) {
+      try {
+        const res = await apiFetch('/api/list-pages');
+        if (!res.ok) return;
+        const data = await res.json();
+        const pages = (data.pages || []);
+        if (!pages.length) return;
+        const current = selectRoute || pageSelect.value || '/';
+        pageSelect.innerHTML = pages.map((p) => `<option value="${p.route}">${p.label}</option>`).join('');
+        if ([...pageSelect.options].some((o) => o.value === current)) pageSelect.value = current;
+      } catch (e) { /* selector stays as-is */ }
+    }
+    pageSelect.addEventListener('change', () => { if (pageSelect.value) navigatePreview(pageSelect.value); });
 
     async function submit(prompt, atts = []) {
       addUser(prompt, atts);
@@ -412,6 +446,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
           setPreviewLabel(data.primary);
           setCanRevert(true);
           refreshCredits();
+          loadPages(fileToRoute(data.primary)); // a new page may have been created
           const m = addAssistant(data.summary || 'Done — updated your site. The preview is live on the left.');
           const files = Array.isArray(data.files) ? data.files : [];
           const nice = files.map((f) => f.replace('src/pages/', '').replace('src/components/', '').replace('.astro', '')).join(', ');
@@ -533,6 +568,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
         document.querySelector('.site-name').textContent = site.name;
         refreshCredits();
         if (!site.editable) { showNotConnected(site); return; }
+        loadPages();
         loadInitialPreview();
       } catch (e) { loadInitialPreview(); }
     }
