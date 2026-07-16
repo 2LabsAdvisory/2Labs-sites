@@ -18,7 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { getDraftFile, setDraftFile, listDraftFiles, saveUndoManifest } = require('../lib/draftStore');
+const { getDraftFile, setDraftFile, listDraftFiles, saveUndoManifest, isDeleted, markDeleted, removeDraftFile } = require('../lib/draftStore');
 const { recordEdit } = require('../lib/usageStore');
 const { getAsset } = require('../lib/assetStore');
 const { putResult } = require('../lib/editResultStore');
@@ -94,6 +94,39 @@ const EDIT_TOOL = {
   },
 };
 
+// Delete existing page(s). Also remove nav links/references to them via edits.
+const DELETE_TOOL = {
+  name: 'delete_pages',
+  description:
+    'Delete existing page(s) from the site. List the page file path(s) to remove in `delete`, and use `edits` to remove any navigation links or references to the deleted page(s) (e.g. drop the <a> from Header.astro). Set primary_path to a page that still exists (usually the homepage) to show in the preview.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'A friendly 1–2 sentence summary of what you removed, in a boutique-studio voice.' },
+      primary_path: { type: 'string', description: 'A page that still exists to show in the preview after deletion (e.g. src/pages/index.astro).' },
+      delete: {
+        type: 'array',
+        description: 'Repo-relative page file paths to delete, e.g. "src/pages/old-page.astro".',
+        items: { type: 'string' },
+      },
+      edits: {
+        type: 'array',
+        description: 'Targeted old_string→new_string edits to remove links/references to the deleted page(s) (e.g. remove the nav <a> in Header.astro). May be empty.',
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+            old_string: { type: 'string' },
+            new_string: { type: 'string' },
+          },
+          required: ['path', 'old_string', 'new_string'],
+        },
+      },
+    },
+    required: ['summary', 'primary_path', 'delete'],
+  },
+};
+
 module.exports = async function (context, req) {
   const sessionEmail = await validateSessionEmail(getBearerToken(req));
   if (!sessionEmail || !isEmailAllowed(sessionEmail)) {
@@ -143,7 +176,7 @@ module.exports = async function (context, req) {
         max_tokens: 16000,
         thinking: { type: 'disabled' },
         system: buildSystemPrompt(brand, org),
-        tools: [EDIT_TOOL, APPLY_TOOL],
+        tools: [EDIT_TOOL, APPLY_TOOL, DELETE_TOOL],
         tool_choice: { type: 'any' },
         messages: [{ role: 'user', content: [...attachmentBlocks, { type: 'text', text: buildUserMessage(prompt, context_files, attachments) }] }],
       });
@@ -153,32 +186,51 @@ module.exports = async function (context, req) {
     }
     context.log(`[edit-site] anthropic ${Date.now() - tGen}ms, stop=${response.stop_reason}`);
 
-    const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && (b.name === 'edit_files' || b.name === 'apply_site_changes'));
+    const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && (b.name === 'edit_files' || b.name === 'apply_site_changes' || b.name === 'delete_pages'));
     if (!toolUse || !toolUse.input) throw new Error('The AI did not return any file changes. Try rephrasing.');
 
     const { summary, primary_path } = toolUse.input;
-    // Both tools converge on a list of {path, content}: apply_site_changes gives
-    // full contents; edit_files gives snippet replacements we apply to current
-    // content. The rest of the pipeline (validate → render → save) is identical.
-    const files = toolUse.name === 'edit_files'
-      ? await applyTargetedEdits(toolUse.input.edits)
-      : (Array.isArray(toolUse.input.files) ? toolUse.input.files : []);
-    if (files.length === 0) throw new Error('No file changes were produced.');
+    // The tools converge on files (full {path,content} to write) + deletions
+    // (paths to remove). apply_site_changes gives full files; edit_files applies
+    // snippet replacements; delete_pages removes pages (+ optional nav edits).
+    let files = [];
+    let deletions = [];
+    if (toolUse.name === 'edit_files') {
+      files = await applyTargetedEdits(toolUse.input.edits);
+    } else if (toolUse.name === 'delete_pages') {
+      deletions = (Array.isArray(toolUse.input.delete) ? toolUse.input.delete : []).filter(Boolean);
+      for (const p of deletions) if (!isEditablePath(p)) throw new Error(`Not allowed to delete "${p}".`);
+      if (deletions.length === 0) throw new Error('No pages to delete were specified.');
+      files = Array.isArray(toolUse.input.edits) && toolUse.input.edits.length ? await applyTargetedEdits(toolUse.input.edits) : [];
+    } else {
+      files = Array.isArray(toolUse.input.files) ? toolUse.input.files : [];
+    }
+    if (files.length === 0 && deletions.length === 0) throw new Error('No file changes were produced.');
+    const deletedSet = new Set(deletions);
 
-    // 3. Validate every path is inside the client site (never the app or API).
+    // 3. Validate every written path is inside the client site (never app/API).
     for (const f of files) {
       if (!f || !isEditablePath(f.path)) throw new Error(`Not allowed to write "${f && f.path}".`);
       if (typeof f.content !== 'string' || f.content.trim().length < 10) throw new Error(`Empty content for "${f.path}".`);
     }
-    const primary = isEditablePath(primary_path) && files.some((f) => f.path === primary_path) ? primary_path : files[0].path;
-    const primaryContent = files.find((f) => f.path === primary).content;
+
+    // Preview a page that still exists (not one being deleted).
+    let primary = isEditablePath(primary_path) && !deletedSet.has(primary_path) ? primary_path : null;
+    if (!primary) primary = (files.find((f) => !deletedSet.has(f.path)) || {}).path || 'src/pages/index.astro';
+    const primaryFile = files.find((f) => f.path === primary);
+    const primaryContent = primaryFile ? primaryFile.content : await effectiveContent(primary);
+    if (primaryContent == null) throw new Error('Could not find a page to preview after the change.');
 
     // 4. Render the primary page FIRST — a broken edit fails here and is not
-    //    saved. Overlay EVERY edited file (prior drafts + this edit) so nav/
-    //    layout changes (e.g. the updated Header) show live in the preview.
+    //    saved. Overlay every non-deleted edited file so nav/layout changes show
+    //    live in the preview; exclude anything being deleted.
     const overlay = {};
-    for (const p of await listDraftFiles(CLIENT_ID)) overlay[p] = await getDraftFile(CLIENT_ID, p);
+    for (const p of await listDraftFiles(CLIENT_ID)) {
+      const c = await getDraftFile(CLIENT_ID, p);
+      if (!isDeleted(c)) overlay[p] = c;
+    }
     for (const f of files) overlay[f.path] = f.content;
+    for (const p of deletions) delete overlay[p];
 
     let html;
     const tRender = Date.now();
@@ -189,12 +241,19 @@ module.exports = async function (context, req) {
     }
     context.log(`[edit-site] render ${Date.now() - tRender}ms (primary=${primary}, files=${files.length})`);
 
-    // 5. Snapshot the whole draft state for one-level undo, then save all files.
+    // 5. Snapshot the whole draft state for one-level undo, then save edits and
+    //    apply deletions. A page that exists on disk gets a tombstone (so publish
+    //    removes it from the repo); a draft-only page is just dropped. Undo works
+    //    either way because the snapshot is taken before any change.
     try {
       const snapshot = {};
       for (const p of await listDraftFiles(CLIENT_ID)) snapshot[p] = await getDraftFile(CLIENT_ID, p);
       await saveUndoManifest(CLIENT_ID, snapshot);
       for (const f of files) await setDraftFile(CLIENT_ID, f.path, f.content);
+      for (const p of deletions) {
+        if (fs.existsSync(path.join(siteRoot(), p))) await markDeleted(CLIENT_ID, p);
+        else await removeDraftFile(CLIENT_ID, p);
+      }
     } catch (e) {
       throw new Error(`draft-save: ${e.message}`);
     }
@@ -213,6 +272,7 @@ module.exports = async function (context, req) {
       status: 'ok',
       summary: summary || 'Updated your site.',
       files: files.map((f) => f.path),
+      deleted: deletions,
       primary,
       html,
       credits: usage ? { used: usage.edits, period: usage.period } : null,
@@ -274,6 +334,7 @@ function isEditablePath(p) {
 /** Effective current content: draft if present, else disk, else null. */
 async function effectiveContent(relPath) {
   const draft = await getDraftFile(CLIENT_ID, relPath);
+  if (isDeleted(draft)) return null; // tombstoned — treat as gone
   if (draft != null) return draft;
   const abs = path.join(siteRoot(), relPath);
   return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : null;
@@ -286,10 +347,13 @@ async function listSitePages() {
   if (fs.existsSync(dir)) {
     for (const f of fs.readdirSync(dir)) if (f.endsWith('.astro')) set.add(`src/pages/${f}`);
   }
+  const deleted = new Set();
   for (const p of await listDraftFiles(CLIENT_ID)) {
-    if (p.startsWith('src/pages/') && p.endsWith('.astro')) set.add(p);
+    if (!p.startsWith('src/pages/') || !p.endsWith('.astro')) continue;
+    if (isDeleted(await getDraftFile(CLIENT_ID, p))) deleted.add(p);
+    else set.add(p);
   }
-  return [...set].filter((p) => !PROTECTED.has(p));
+  return [...set].filter((p) => !PROTECTED.has(p) && !deleted.has(p));
 }
 
 function buildUserMessage(prompt, contextFiles, attachments = []) {
@@ -378,6 +442,7 @@ function buildSystemPrompt(brand, org) {
     'Choosing a tool (IMPORTANT for speed):',
     '- For localized changes to an existing page — swapping an image, editing copy, changing a color/style, updating a link — call edit_files with small, exact old_string→new_string replacements. Include enough surrounding text in old_string to match uniquely. This is much faster; use it whenever you are not creating a new page or doing a large rewrite.',
     '- Only use apply_site_changes (full file contents) to create a new page or when a change is too sweeping for targeted edits.',
+    '- To DELETE a page, call delete_pages with the page file path(s) in `delete`, and use `edits` to remove its navigation link(s)/references (e.g. remove the <a> from Header.astro). Never blank a file to "delete" it — use delete_pages.',
     '- When replacing an image, edit the exact <img …> (or CSS url(…)) to point at the provided hosted URL.',
   ].join('\n');
 }

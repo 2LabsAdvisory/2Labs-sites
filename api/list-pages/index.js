@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { listDraftFiles } = require('../lib/draftStore');
+const { listDraftFiles, getDraftFile, isDeleted } = require('../lib/draftStore');
 const { siteRoot, brand } = require('../lib/siteConfig');
 
 const CLIENT_ID = brand.clientId;
@@ -44,12 +44,15 @@ module.exports = async function (context, req) {
       };
       walk(dir, '');
     }
+    const deleted = new Set();
     for (const p of await listDraftFiles(CLIENT_ID)) {
-      if (p.startsWith('src/pages/') && p.endsWith('.astro')) set.add(p);
+      if (!p.startsWith('src/pages/') || !p.endsWith('.astro')) continue;
+      if (isDeleted(await getDraftFile(CLIENT_ID, p))) deleted.add(p);
+      else set.add(p);
     }
 
     const pages = [...set]
-      .filter((f) => !NON_PAGES.has(f))
+      .filter((f) => !NON_PAGES.has(f) && !deleted.has(f))
       .map((file) => { const route = fileToRoute(file); return { route, file, label: labelFor(route) }; })
       .sort((a, b) => (a.route === '/' ? -1 : b.route === '/' ? 1 : a.label.localeCompare(b.label)));
 

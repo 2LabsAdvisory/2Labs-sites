@@ -445,12 +445,16 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       refreshCredits();
       loadPages(fileToRoute(data.primary)); // a new page may have been created
       const m = addAssistant(data.summary || 'Done — updated your site. The preview is live on the left.');
+      const nameOf = (f) => f.replace('src/pages/', '').replace('src/components/', '').replace('.astro', '');
       const files = Array.isArray(data.files) ? data.files : [];
-      const nice = files.map((f) => f.replace('src/pages/', '').replace('src/components/', '').replace('.astro', '')).join(', ');
+      const deleted = Array.isArray(data.deleted) ? data.deleted : [];
+      const parts = [];
+      if (files.length) parts.push(`<b>Updated:</b> ${files.map(nameOf).join(', ')}`);
+      if (deleted.length) parts.push(`<b>Removed:</b> ${deleted.map(nameOf).join(', ')}`);
       const chip = document.createElement('div'); chip.className = 'diff-chip';
       const dot = document.createElement('span'); dot.className = 'dot';
       const txt = document.createElement('span');
-      txt.innerHTML = files.length ? `<b>Updated:</b> ${nice}. Publish when it looks right, or Revert to undo.` : '<b>Draft updated.</b> Publish when it looks right, or Revert to undo.';
+      txt.innerHTML = (parts.length ? parts.join(' · ') : '<b>Draft updated.</b>') + ' Publish when it looks right, or Revert to undo.';
       chip.append(dot, txt); m.bubble.appendChild(chip); scrollDown();
     }
 

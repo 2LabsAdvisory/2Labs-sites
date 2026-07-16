@@ -9,8 +9,11 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 let saveCalls = [];        // { path, content }
+let deleteCalls = [];      // { type: 'mark'|'remove', path }
 let nextResponse = null;   // Anthropic response .content array
 let nextRenderThrows = false;
+
+const DELETED_SENTINEL = ' __2LABS_DELETED__ ';
 
 const CURRENT_INDEX = `---
 import BaseLayout from '../layouts/BaseLayout.astro';
@@ -19,6 +22,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
 const toolResp = (input) => [{ type: 'tool_use', name: 'apply_site_changes', input }];
 const editResp = (input) => [{ type: 'tool_use', name: 'edit_files', input }];
+const deleteResp = (input) => [{ type: 'tool_use', name: 'delete_pages', input }];
 const textResp = (text) => [{ type: 'text', text }];
 
 class FakeAnthropic {
@@ -48,6 +52,10 @@ require.cache[require.resolve('../lib/draftStore')] = {
     listDraftFiles: async () => [],
     clearDraft: async () => {}, clearDraftFiles: async () => {},
     saveUndoManifest: async () => {}, getUndoManifest: async () => null, clearUndoManifest: async () => {},
+    DELETED: DELETED_SENTINEL,
+    isDeleted: (content) => content === DELETED_SENTINEL,
+    markDeleted: async (c, p) => { deleteCalls.push({ type: 'mark', path: p }); },
+    removeDraftFile: async (c, p) => { deleteCalls.push({ type: 'remove', path: p }); },
   },
 };
 require.cache[require.resolve('../lib/renderDraft')] = {
@@ -68,7 +76,7 @@ const handler = require(path.join(__dirname, '..', 'edit-site', 'index.js'));
 
 function makeContext() { return { log: Object.assign(() => {}, { error: () => {} }), res: null }; }
 async function invoke(body, { authed = true, renderThrows = false } = {}) {
-  saveCalls = []; nextRenderThrows = renderThrows;
+  saveCalls = []; deleteCalls = []; nextRenderThrows = renderThrows;
   const ctx = makeContext();
   await handler(ctx, { body, headers: authed ? { authorization: 'Bearer t' } : {} });
   return ctx.res;
@@ -124,6 +132,31 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     assert.strictEqual(res.status, 500);
     assert.match(res.body.detail, /Couldn't find/);
     assert.strictEqual(saveCalls.length, 0);
+  });
+
+  await check('delete_pages → removes the page + wires nav, previews home', async () => {
+    nextResponse = deleteResp({
+      summary: 'Removed the Technology Health Check page and its nav link.',
+      primary_path: 'src/pages/index.astro',
+      delete: ['src/pages/technology-health-check.astro'],
+      edits: [{ path: 'src/components/Header.astro', old_string: 'Do More Good', new_string: 'Do More Good' }],
+    });
+    const res = await invoke({ prompt: 'delete the technology health check page' });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.status, 'ok');
+    assert.deepStrictEqual(res.body.deleted, ['src/pages/technology-health-check.astro']);
+    assert.strictEqual(res.body.primary, 'src/pages/index.astro');
+    assert.match(res.body.html, /rendered/);
+    // Page not on disk in tests → dropped via removeDraftFile.
+    assert.strictEqual(deleteCalls.length, 1);
+    assert.strictEqual(deleteCalls[0].path, 'src/pages/technology-health-check.astro');
+  });
+
+  await check('delete_pages with no paths → 500 and NO delete', async () => {
+    nextResponse = deleteResp({ summary: 'x', primary_path: 'src/pages/index.astro', delete: [] });
+    const res = await invoke({ prompt: 'delete nothing' });
+    assert.strictEqual(res.status, 500);
+    assert.strictEqual(deleteCalls.length, 0);
   });
 
   await check('disallowed path (builder app page) → 500 and NO save', async () => {

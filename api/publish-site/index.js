@@ -17,7 +17,7 @@
 
 const { Octokit } = require('@octokit/rest');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { listDraftFiles, getDraftFile, clearDraft } = require('../lib/draftStore');
+const { listDraftFiles, getDraftFile, clearDraft, isDeleted } = require('../lib/draftStore');
 const { getSite } = require('../lib/siteRegistry');
 const { brand, DEFAULT_SITE } = require('../lib/siteConfig');
 
@@ -73,13 +73,22 @@ module.exports = async function (context, req) {
       const content = await getDraftFile(CLIENT_ID, filePath);
       if (content == null) continue;
 
-      // A file update needs the current blob sha; a brand-new file doesn't.
+      // Current sha (needed to update or delete an existing file; absent = new).
       let sha;
       try {
         const existing = await octokit.repos.getContent({ ...repoRef, path: filePath, ref: branch });
         sha = existing.data.sha;
       } catch (err) {
         if (err.status !== 404) throw err;
+      }
+
+      // A tombstoned draft means "remove this page from the repo".
+      if (isDeleted(content)) {
+        if (sha) {
+          await octokit.repos.deleteFile({ ...repoRef, path: filePath, branch, message: `Delete: ${filePath} (by ${sessionEmail})`, sha });
+          published.push('− ' + filePath);
+        }
+        continue;
       }
 
       await octokit.repos.createOrUpdateFileContents({

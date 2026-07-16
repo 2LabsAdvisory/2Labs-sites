@@ -12,7 +12,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { getDraftFile, listDraftFiles } = require('../lib/draftStore');
+const { getDraftFile, listDraftFiles, isDeleted } = require('../lib/draftStore');
 const { renderDraft } = require('../lib/renderDraft');
 const { siteRoot, brand } = require('../lib/siteConfig');
 
@@ -44,6 +44,10 @@ module.exports = async function (context, req) {
 
   try {
     let content = await getDraftFile(CLIENT_ID, file);
+    if (isDeleted(content)) {
+      context.res = { status: 200, body: { status: 'not_found', path: urlPath, message: `The “${urlPath}” page was deleted.` } };
+      return;
+    }
     if (content == null) {
       const abs = path.join(siteRoot(), file);
       content = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : null;
@@ -53,9 +57,13 @@ module.exports = async function (context, req) {
       return;
     }
 
-    // Overlay all drafts so nav/layout/components reflect the current draft.
+    // Overlay all drafts so nav/layout/components reflect the current draft
+    // (skip tombstoned files so a deleted page can't leak back in).
     const overlay = {};
-    for (const p of await listDraftFiles(CLIENT_ID)) overlay[p] = await getDraftFile(CLIENT_ID, p);
+    for (const p of await listDraftFiles(CLIENT_ID)) {
+      const c = await getDraftFile(CLIENT_ID, p);
+      if (!isDeleted(c)) overlay[p] = c;
+    }
 
     const html = await renderDraft(file, content, overlay);
     context.res = {
