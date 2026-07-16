@@ -100,14 +100,20 @@ module.exports = async function (context, req) {
     const tGen = Date.now();
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      response = await anthropic.messages.create({
+      // This is structured code generation behind a forced tool call, not a
+      // reasoning task: disable adaptive thinking (on by default for Sonnet 5)
+      // to roughly halve latency and stay well under the platform timeout.
+      // Stream + finalMessage() so a large max_tokens can't hit an HTTP timeout.
+      const stream = anthropic.messages.stream({
         model: 'claude-sonnet-5',
         max_tokens: 16000,
+        thinking: { type: 'disabled' },
         system: buildSystemPrompt(brand, org),
         tools: [APPLY_TOOL],
         tool_choice: { type: 'tool', name: 'apply_site_changes' },
         messages: [{ role: 'user', content: [...attachmentBlocks, { type: 'text', text: buildUserMessage(prompt, context_files, attachments) }] }],
       });
+      response = await stream.finalMessage();
     } catch (e) {
       throw new Error(`anthropic: ${e.message}`);
     }

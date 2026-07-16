@@ -21,7 +21,13 @@ const toolResp = (input) => [{ type: 'tool_use', name: 'apply_site_changes', inp
 const textResp = (text) => [{ type: 'text', text }];
 
 class FakeAnthropic {
-  constructor() { this.messages = { create: async () => ({ content: nextResponse }) }; }
+  constructor() {
+    this.messages = {
+      create: async () => ({ content: nextResponse }),
+      // edit-site streams and awaits finalMessage(); mirror that shape.
+      stream: () => ({ finalMessage: async () => ({ content: nextResponse, usage: {} }) }),
+    };
+  }
 }
 
 require.cache[require.resolve('@anthropic-ai/sdk')] = { id: 'a', loaded: true, exports: { Anthropic: FakeAnthropic } };
