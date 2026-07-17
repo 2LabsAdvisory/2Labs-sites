@@ -45,8 +45,15 @@ module.exports = async function (context, req) {
     const nav = pages.map((p) => `- ${p.title} → ${routeFor(p.slug)}`).join('\n');
     const sections = (page.sections || []).map((s, i) => `${i + 1}. ${s.heading} — ${s.intent}`).join('\n') || '(design suitable sections for this page)';
 
-    // Topical photography (if an Unsplash key is configured).
-    const imgQuery = [(content.offers || [])[0], content.org_name, page.title].filter(Boolean).join(' ').slice(0, 80) || orgName;
+    // Topical photography. Search by SUBJECT (archetype + offerings + page
+    // topic) — not the org name or a generic "Home", which return nothing.
+    const imgBits = [
+      brief.interpretation && brief.interpretation.archetype,
+      (content.offers || [])[0],
+      (content.offers || [])[1],
+      /^home$/i.test(page.title || '') ? '' : page.title,
+    ].filter(Boolean);
+    const imgQuery = (imgBits.join(' ').trim() || content.mission || orgName).slice(0, 80);
     const images = await fetchStockImages(imgQuery, 5);
 
     const system = [
