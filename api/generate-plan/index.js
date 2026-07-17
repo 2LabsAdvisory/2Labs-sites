@@ -72,13 +72,22 @@ module.exports = async function (context, req) {
       'You are a senior UX architect and content strategist. Design the information architecture for a mission-driven organization so visitors effortlessly reach the primary goal.',
       'Rules: every page has ONE clear primary action; mobile-first; a logical heading outline. Map the offers into pages/sections. Always include a Home page and a Contact page, plus a page that supports the primary goal. 4–6 pages total. Return via submit_plan only.',
     ].join('\n');
-    const user = [
+    const interp = brief.interpretation || null;
+    const userLines = [
       `Organization: ${content.org_name || site.name || '(unnamed)'}`,
       `Mission: ${content.mission || '(not given)'}`,
       `Offerings: ${(content.offers || []).join(', ') || '(none given)'}`,
       `Primary goal (the site's main CTA): ${content.primary_goal || 'Contact us'}`,
-      brief.mode === 'import' ? 'This is a redesign of an existing site — cover what such an org needs.' : 'This is a new site — use nonprofit/SMB best practice.',
-    ].join('\n');
+    ];
+    if (interp) {
+      if (interp.archetype) userLines.push(`Site type / archetype: ${interp.archetype}`);
+      if (Array.isArray(interp.must_have_sections) && interp.must_have_sections.length) userLines.push(`Category best-practice sections this site MUST cover (map into pages, in a sensible order): ${interp.must_have_sections.join(', ')}`);
+      const facts = (interp.extracted_facts || []).filter((f) => f && f.label);
+      if (facts.length) userLines.push(`Facts the user stated — surface these on the appropriate pages, verbatim, never altered: ${facts.map((f) => `${f.label}: ${f.value}`).join(' | ')}`);
+      if (interp.answers && Object.keys(interp.answers).length) userLines.push(`Answers the user gave to clarifying questions: ${Object.entries(interp.answers).map(([k, v]) => `${k}=${v}`).join(' | ')}`);
+    }
+    userLines.push(brief.mode === 'import' ? 'This is a redesign of an existing site — cover what such an org needs.' : 'This is a new site — use current best practice for this category.');
+    const user = userLines.join('\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     let modelPages = [];

@@ -76,6 +76,18 @@
   .card-actions{ display:flex; justify-content:space-between; align-items:center; margin-top:26px; }
 
   .choice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:22px; }
+  .choice-grid.three{ grid-template-columns:repeat(3,1fr); }
+  @media(max-width:560px){ .choice-grid.three{ grid-template-columns:1fr; } }
+  .choice h4{ font-size:14px; } .choice p{ font-size:12px; }
+  .ref-row{ display:flex; gap:8px; margin-bottom:8px; }
+  .ref-row input.ref-url{ flex:1; } .ref-row input.ref-note{ flex:1; }
+  .ref-row .ref-x{ border:1px solid var(--border); background:var(--surface); border-radius:9px; width:36px; color:var(--ink-soft); cursor:pointer; flex-shrink:0; }
+  .refine-q{ border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .refine-q .q{ font-size:13px; font-weight:600; margin-bottom:8px; }
+  .refine-q input{ width:100%; border:1px solid var(--border); border-radius:9px; padding:9px 12px; font-family:'Inter',sans-serif; font-size:13px; background:var(--bg); color:var(--ink); }
+  .refine-q input:focus{ outline:none; border-color:var(--amber); background:#fff; }
+  .fact-chip{ background:var(--green-bg); color:var(--green); border:1px solid #CFE9D8; font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:100px; }
+  .fact-chip b{ font-weight:700; }
   .choice{ border:1.5px solid var(--border); border-radius:14px; padding:20px; cursor:pointer; transition:.15s; background:var(--surface); position:relative; }
   .choice:hover{ border-color:var(--amber); box-shadow:var(--shadow); }
   .choice.selected{ border-color:var(--amber); background:var(--amber-tint-strong); }
@@ -213,21 +225,27 @@
       <div class="step-panel active" data-panel="1">
         <div class="eyebrow">Step 1 of 5</div>
         <h2>Let's create your new site</h2>
-        <p class="sub">Start from an existing website and we'll carry everything over, or start from a blank canvas and we'll build it with you.</p>
-        <div class="choice-grid">
-          <div class="choice selected" id="choiceImport" onclick="setMode('import')">
-            <div class="choice-tag">Recommended</div>
+        <p class="sub">Bring an existing site over, describe the site you want in plain language, or start from a blank canvas.</p>
+        <div class="choice-grid three">
+          <div class="choice" id="choiceImport" onclick="setMode('import')">
             <div class="choice-ico">🌐</div>
             <h4>Import an existing site</h4>
-            <p>We'll pull in your pages, brand, and content — then redesign and rewrite it.</p>
+            <p>We'll pull in your pages, brand &amp; content — then redesign and rewrite it.</p>
+          </div>
+          <div class="choice selected" id="choiceDescribe" onclick="setMode('describe')">
+            <div class="choice-tag">Recommended</div>
+            <div class="choice-ico">✍️</div>
+            <h4>Describe your site</h4>
+            <p>Tell us what it's for in plain language — we'll research, plan &amp; build it.</p>
           </div>
           <div class="choice" id="choiceBlank" onclick="setMode('blank')">
             <div class="choice-ico">✨</div>
             <h4>Start from blank</h4>
-            <p>No site yet? Tell us about your organization and we'll build it from best practices.</p>
+            <p>No site yet? We'll build from best practices as you fill in the details.</p>
           </div>
         </div>
-        <div class="import-panel" id="importPanel">
+
+        <div class="import-panel hidden" id="importPanel">
           <div class="import-visual"><div class="old-site"></div><div class="arrow">→</div><div class="new-site"></div></div>
           <div class="field" style="margin-bottom:0;">
             <label>Current website URL</label>
@@ -238,9 +256,50 @@
             <div class="field-hint">We'll scan your site to extract brand, pages, and content.</div>
           </div>
         </div>
+
+        <div class="import-panel" id="describePanel">
+          <div class="field">
+            <label>Describe the site you want</label>
+            <textarea id="descInput" style="min-height:120px;" placeholder="Tell us what the site is for, who it's for, and any key details — dates, prices, locations, what you offer. e.g. “A website for a trail running race. Distances 10K, 25K, 50K; race day Sept 20 in Canmore; early-bird pricing until July.”"></textarea>
+          </div>
+          <div class="field">
+            <label>Sites you like <span style="color:var(--ink-soft);font-weight:400;">(optional)</span></label>
+            <div id="refRows"></div>
+            <button type="button" class="btn btn-ghost" id="addRefBtn" style="padding:8px 14px;font-size:12.5px;">+ Add a reference</button>
+            <div class="field-hint">We study their design &amp; structure patterns only — never their content or assets.</div>
+          </div>
+          <div class="field" style="margin-bottom:14px;">
+            <label>Style notes <span style="color:var(--ink-soft);font-weight:400;">(optional)</span></label>
+            <input type="text" id="styleInput" placeholder="e.g. modern and minimal · warm and community-feeling · bold and energetic" />
+          </div>
+          <button class="btn btn-primary" id="describeBtn" onclick="generateBrief()">Generate my brief →</button>
+        </div>
+
         <div class="import-panel hidden" id="blankPanel">
           <p style="margin:0 0 14px; font-size:13px; color:var(--ink-soft); line-height:1.5;">No problem — you'll tell us your organization's mission, what you offer, and your main goal on the next steps, and our AI brand designer will propose a starting look you can shape.</p>
           <button class="btn btn-primary" onclick="goTo(2)">Start from blank →</button>
+        </div>
+      </div>
+
+      <!-- STEP 1.5 : REFINE (describe path only) -->
+      <div class="step-panel" data-panel="refine">
+        <div class="eyebrow">Let's get the details right</div>
+        <h2 id="refineTitle">Here's what I understood</h2>
+        <div class="ai-callout">
+          <div class="ai-avatar">◈</div>
+          <div>
+            <div class="ai-name">2Labs Strategist</div>
+            <p id="refineRecap">…</p>
+          </div>
+        </div>
+        <div id="refineFacts" class="review-block" style="display:none;">
+          <div class="review-block-head"><h4>✓ Facts I'll keep exactly</h4></div>
+          <div id="refineFactList" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+        <div id="refineQuestions"></div>
+        <div class="card-actions" style="margin-top:22px;">
+          <button class="btn btn-ghost" onclick="goTo(1)">← Back</button>
+          <button class="btn btn-primary" id="refineContinue" onclick="finishRefine()">Continue →</button>
         </div>
       </div>
 
@@ -391,13 +450,15 @@
       neutral:[{name:'Ink',hex:'#1F2430'},{name:'Slate',hex:'#3D4351'},{name:'Muted',hex:'#676F7E'},{name:'Silver',hex:'#A7ADB8'},{name:'Line',hex:'#E4E0DB'},{name:'Paper',hex:'#F7F6F4'}]
     }
   };
-  const CONTENT = { import:{org:'',mission:'',offers:[],goal:null}, blank:{org:'',mission:'',offers:[],goal:null} };
+  PALETTES.describe = JSON.parse(JSON.stringify(PALETTES.blank));
+  const CONTENT = { import:{org:'',mission:'',offers:[],goal:null}, blank:{org:'',mission:'',offers:[],goal:null}, describe:{org:'',mission:'',offers:[],goal:null} };
   const GOALS = ['Donate','Volunteer','Book / Contact us','Sign up','Buy'];
 
-  let mode = 'import';
+  let mode = 'describe';
   let current = 1;
   const total = 5;
   let createdSlug = null;
+  let interpretation = null; // Brief Interpreter output (describe path)
 
   function applyMode(){
     document.body.dataset.mode = mode;
@@ -406,10 +467,78 @@
   }
   function setMode(m){
     mode = m; applyMode();
-    document.getElementById('choiceImport').classList.toggle('selected', m==='import');
-    document.getElementById('choiceBlank').classList.toggle('selected', m==='blank');
+    for (const [id, mm] of [['choiceImport','import'],['choiceDescribe','describe'],['choiceBlank','blank']]) document.getElementById(id).classList.toggle('selected', m===mm);
     document.getElementById('importPanel').classList.toggle('hidden', m!=='import');
+    document.getElementById('describePanel').classList.toggle('hidden', m!=='describe');
     document.getElementById('blankPanel').classList.toggle('hidden', m!=='blank');
+  }
+
+  // ---- Describe path: references + Brief Interpreter + Refine ----
+  let describeInput = null;
+  const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  function addRefRow(url='', note=''){
+    const wrap=document.createElement('div'); wrap.className='ref-row';
+    const u=document.createElement('input'); u.type='text'; u.className='ref-url'; u.placeholder='https://a-site-you-like.com'; u.value=url;
+    const n=document.createElement('input'); n.type='text'; n.className='ref-note'; n.placeholder='what you like (optional)'; n.value=note;
+    const x=document.createElement('button'); x.type='button'; x.className='ref-x'; x.textContent='×'; x.onclick=()=>wrap.remove();
+    wrap.append(u,n,x); document.getElementById('refRows').appendChild(wrap);
+  }
+  const collectRefs=()=>[...document.querySelectorAll('#refRows .ref-row')].map(r=>({url:r.querySelector('.ref-url').value.trim(),note:r.querySelector('.ref-note').value.trim()})).filter(r=>r.url);
+
+  async function generateBrief(){
+    const desc=document.getElementById('descInput').value.trim();
+    if(!desc){ document.getElementById('descInput').focus(); return; }
+    const btn=document.getElementById('describeBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Reading your brief…';
+    describeInput={ description:desc, references:collectRefs(), style_notes:document.getElementById('styleInput').value.trim() };
+    try {
+      const res=await apiFetch('/api/interpret-brief',{method:'POST',body:JSON.stringify(describeInput)});
+      const data=await res.json().catch(()=>({}));
+      if(res.status===401){ location.replace('/login'); return; }
+      if(data.status!=='ok'||!data.interpretation) throw new Error('interpret failed');
+      interpretation=data.interpretation;
+      const c=CONTENT.describe;
+      if(interpretation.org_name) c.org=interpretation.org_name;
+      if(interpretation.summary) c.mission=interpretation.summary;
+      if(Array.isArray(interpretation.offers)&&interpretation.offers.length) c.offers=interpretation.offers.slice();
+      if(interpretation.primary_goal) c.goal=interpretation.primary_goal;
+      renderRefine(); showRefine();
+    } catch(e){
+      // Fall back: proceed with the description as the mission, skip refine.
+      interpretation={ archetype:'', primary_goal:null, summary:desc, extracted_facts:[], must_have_sections:[], gaps:[], clarifying_questions:[] };
+      CONTENT.describe.mission=desc; goTo(2);
+    } finally { btn.disabled=false; btn.innerHTML='Generate my brief →'; }
+  }
+
+  function renderRefine(){
+    const it=interpretation||{};
+    document.getElementById('refineRecap').textContent = it.rationale || ('A '+(it.archetype||'site')+(it.primary_goal?(' built to '+it.primary_goal.toLowerCase()):'')+'.');
+    const facts=it.extracted_facts||[]; const fw=document.getElementById('refineFacts'); const fl=document.getElementById('refineFactList');
+    fl.innerHTML=''; fw.style.display=facts.length?'block':'none';
+    facts.forEach(f=>{ const s=document.createElement('span'); s.className='fact-chip'; s.innerHTML='<b>'+esc(f.label)+':</b> '+esc(f.value); fl.appendChild(s); });
+    const qs=(it.clarifying_questions||[]).slice(0,5); const qc=document.getElementById('refineQuestions'); qc.innerHTML='';
+    if(!qs.length){ const d=document.createElement('div'); d.className='field-hint'; d.style.margin='6px 0 0'; d.textContent='Got everything I need — continue when ready.'; qc.appendChild(d); }
+    qs.forEach(q=>{
+      const box=document.createElement('div'); box.className='refine-q'; box.dataset.qid=q.id;
+      const qt=document.createElement('div'); qt.className='q'; qt.textContent=q.question; box.appendChild(qt);
+      if(q.kind==='choice'&&Array.isArray(q.options)){
+        const row=document.createElement('div'); row.className='chip-row'; row.style.marginTop='0';
+        q.options.forEach(o=>{ const chip=document.createElement('span'); chip.className='chip goal'; chip.textContent=o; chip.onclick=()=>{ [...row.children].forEach(c=>c.classList.remove('goal-sel')); chip.classList.add('goal-sel'); box.dataset.answer=o; }; row.appendChild(chip); });
+        box.appendChild(row);
+      } else { const inp=document.createElement('input'); inp.type='text'; inp.placeholder='Your answer (optional)'; inp.oninput=()=>{ box.dataset.answer=inp.value.trim(); }; box.appendChild(inp); }
+      qc.appendChild(box);
+    });
+  }
+  function showRefine(){
+    document.querySelectorAll('.step-panel').forEach(p=>p.classList.remove('active'));
+    document.querySelector('.step-panel[data-panel="refine"]').classList.add('active');
+    document.getElementById('cardActions').style.display='none';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function finishRefine(){
+    const answers={};
+    document.querySelectorAll('#refineQuestions .refine-q').forEach(b=>{ if(b.dataset.answer) answers[b.dataset.qid]=b.dataset.answer; });
+    if(interpretation) interpretation.answers=answers;
+    goTo(2);
   }
 
   function makeSwatch(c){
@@ -461,7 +590,11 @@
     try{
       const payload = mode==='import'
         ? { mode, url:(document.getElementById('urlInput').value||'').trim() }
-        : { mode, org:CONTENT[mode].org, mission:CONTENT[mode].mission, offers:[], goal:CONTENT[mode].goal };
+        : mode==='describe'
+          ? { mode, org:CONTENT.describe.org, mission:CONTENT.describe.mission, offers:CONTENT.describe.offers, goal:CONTENT.describe.goal,
+              description:(describeInput&&describeInput.description)||'', style_notes:(describeInput&&describeInput.style_notes)||'',
+              inspiration:(interpretation&&interpretation.inspiration)||null, archetype:(interpretation&&interpretation.archetype)||'' }
+          : { mode, org:CONTENT[mode].org, mission:CONTENT[mode].mission, offers:[], goal:CONTENT[mode].goal };
       const res = await apiFetch('/api/generate-brand', { method:'POST', body: JSON.stringify(payload) });
       const data = await res.json().catch(()=>({}));
       if(data.status==='ok' && data.brand && data.brand.colors){
@@ -536,7 +669,11 @@
         mission: (document.getElementById('mission').value||'').trim(),
         offers,
         primary_goal: CONTENT[mode].goal || null
-      }
+      },
+      ...(mode==='describe' ? {
+        input: describeInput || {},
+        interpretation: interpretation || null
+      } : {})
     };
   }
 
@@ -624,7 +761,9 @@
   }
   document.getElementById('confirmChk').addEventListener('change', function(){ document.getElementById('nextBtn').disabled = !this.checked; });
 
-  setMode('import');
+  document.getElementById('addRefBtn').onclick=()=>addRefRow();
+  addRefRow();
+  setMode('describe');
   render();
 </script>
 

@@ -84,6 +84,19 @@ module.exports = async function (context, req) {
       `Offerings: ${(content.offers || []).join(', ') || '(none given)'}`,
       `Primary goal / CTA: ${primaryCta}`,
       `Pass to BaseLayout: orgName={${JSON.stringify(orgName)}} primaryCta={${JSON.stringify(primaryCta)}}.`,
+      ...(() => {
+        const interp = brief.interpretation || null;
+        if (!interp) return [];
+        const out = [];
+        if (interp.archetype) out.push(`Site type / archetype: ${interp.archetype}`);
+        const facts = (interp.extracted_facts || []).filter((f) => f && f.label);
+        if (facts.length) out.push(`FACTS THE USER STATED — use these verbatim where relevant; never alter a value and never invent competing ones: ${facts.map((f) => `${f.label}: ${f.value}`).join(' | ')}`);
+        const insp = interp.inspiration || {};
+        const dir = [insp.layout_direction, insp.palette_direction, insp.tone].filter(Boolean).join(' · ');
+        if (dir) out.push(`Design direction (mood/patterns only — original work, never copy any specific site's text, images, logos, or exact layout): ${dir}`);
+        if (interp.answers && Object.keys(interp.answers).length) out.push(`User's answers to clarifying questions: ${Object.entries(interp.answers).map(([k, v]) => `${k}=${v}`).join(' | ')}`);
+        return out;
+      })(),
       '',
       images.length ? 'PHOTOGRAPHS TO USE (exact URLs — embed with brand-tinted overlays + alt text):\n' + images.map((im, i) => `${i + 1}. ${im.url}\n   alt: ${im.alt}`).join('\n') : 'No photographs available — use gradient/SVG art.',
       '',

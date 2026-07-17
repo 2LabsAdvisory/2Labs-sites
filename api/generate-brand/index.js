@@ -132,7 +132,7 @@ module.exports = async function (context, req) {
   }
 
   const b = req.body || {};
-  const mode = b.mode === 'blank' ? 'blank' : 'import';
+  const mode = b.mode === 'blank' ? 'blank' : b.mode === 'describe' ? 'describe' : 'import';
   try {
     let scan = null;
     if (mode === 'import' && b.url) scan = await scanSite(b.url);
@@ -141,7 +141,16 @@ module.exports = async function (context, req) {
     if (scan) {
       lines.push(`Scanned ${scan.url}.`, `Page title: ${scan.title}`, `Colors observed (most frequent first): ${scan.colors.join(', ') || '(none found)'}`, `Fonts observed: ${scan.fonts.join(', ') || '(none found)'}`, `Page text (excerpt): ${scan.text}`, '', 'Preserve the real primary/secondary colors and fonts where they pass contrast; complete the system.');
     } else {
-      lines.push(`Organization: ${b.org || '(unnamed)'}`, `Mission: ${b.mission || '(not given)'}`, `Offers: ${(Array.isArray(b.offers) ? b.offers : []).join(', ') || '(not given)'}`, `Primary goal: ${b.goal || '(not given)'}`, '', 'No existing site — design a fitting, trustworthy starter system for this organization and sector.');
+      lines.push(`Organization: ${b.org || '(unnamed)'}`, `Mission: ${b.mission || '(not given)'}`, `Offers: ${(Array.isArray(b.offers) ? b.offers : []).join(', ') || '(not given)'}`, `Primary goal: ${b.goal || '(not given)'}`);
+      if (mode === 'describe') {
+        if (b.archetype) lines.push(`Site type: ${b.archetype}`);
+        if (b.description) lines.push(`What the user described: ${String(b.description).slice(0, 1200)}`);
+        if (b.style_notes) lines.push(`Style notes from the user (honor these): ${b.style_notes}`);
+        const insp = b.inspiration || {};
+        const dir = [insp.palette_direction, insp.tone, insp.layout_direction].filter(Boolean).join(' · ');
+        if (dir) lines.push(`IP-safe inspiration direction (mood/patterns only — never copy any specific brand): ${dir}`);
+      }
+      lines.push('', 'No existing site — design a fitting, trustworthy starter system for this organization and sector.');
     }
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
