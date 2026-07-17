@@ -464,7 +464,17 @@
         : { mode, org:CONTENT[mode].org, mission:CONTENT[mode].mission, offers:[], goal:CONTENT[mode].goal };
       const res = await apiFetch('/api/generate-brand', { method:'POST', body: JSON.stringify(payload) });
       const data = await res.json().catch(()=>({}));
-      if(data.status==='ok' && data.brand && data.brand.colors){ brandState[mode]=data; applyBrand(data); }
+      if(data.status==='ok' && data.brand && data.brand.colors){
+        brandState[mode]=data; applyBrand(data);
+        // Import: prefill Step 3 content from what the scan extracted.
+        if(mode==='import' && data.content){
+          const c=data.content;
+          if(c.org_name) CONTENT.import.org=c.org_name;
+          if(c.mission) CONTENT.import.mission=c.mission;
+          if(Array.isArray(c.offers)&&c.offers.length) CONTENT.import.offers=c.offers;
+          updateOrgPill();
+        }
+      }
       else { renderColors(); } // graceful fallback to the starter palette
     }catch(e){ renderColors(); }
     finally{ setBrandBusy(false); }
@@ -539,36 +549,59 @@
     try {
       const res = await apiFetch('/api/save-site', { method:'POST', body: JSON.stringify({ name, domain, brief }) });
       const data = await res.json().catch(()=>({}));
-      if (data.status==='ok' && data.site) {
-        createdSlug = data.site.slug;
-        // Seed an editable starter (tokens + home) from the brief.
-        try { await apiFetch('/api/seed-site', { method:'POST', body: JSON.stringify({ site: createdSlug }) }); } catch(e) {}
-      }
-    } catch(e) { /* the editor link falls back to the dashboard */ }
+      if (data.status==='ok' && data.site) createdSlug = data.site.slug;
+    } catch(e) { /* handled by the caller */ }
   }
 
-  let buildTimers = [];
-  function runBuild(){
-    createSite(); // fire the creation in parallel with the progress animation
+  // Run the real Studio pipeline (plan → page-by-page), driving the Step 5 UI
+  // from actual progress. Each call is bounded so nothing hits the timeout.
+  let studioRunning = false;
+  async function runBuild(){
+    if (studioRunning) return; studioRunning = true;
     document.getElementById('buildHead').style.display='block';
     document.getElementById('teamList').style.display='block';
     document.getElementById('buildDone').style.display='none';
-    const rows=document.querySelectorAll('#teamList .team-row');
-    rows.forEach(r=>{ r.className='team-row waiting'; r.querySelector('.team-status').innerHTML='<span class="spinner"></span> Queued'; });
-    buildTimers.forEach(t=>clearTimeout(t)); buildTimers=[];
-    rows.forEach((r,i)=>{
-      buildTimers.push(setTimeout(()=>{ r.classList.remove('waiting'); r.querySelector('.team-status').innerHTML='<span class="spinner"></span> Working…'; }, 400+i*900));
-      buildTimers.push(setTimeout(()=>{ r.classList.add('done'); r.querySelector('.team-status').innerHTML='<span class="check">✓</span> Done'; }, 1600+i*1100));
-    });
-    buildTimers.push(setTimeout(()=>{
-      document.getElementById('buildHead').style.display='none';
-      document.getElementById('teamList').style.display='none';
-      // The site is seeded + editable — open it straight in the editor.
-      const link = document.getElementById('openEditorBtn');
-      link.href = createdSlug ? ('/editor?site=' + encodeURIComponent(createdSlug)) : '/dashboard';
-      link.textContent = createdSlug ? 'Open in Editor →' : 'Go to your sites →';
-      document.getElementById('buildDone').style.display='block';
-    }, 1600+rows.length*1100+700));
+    const rows = [...document.querySelectorAll('#teamList .team-row')];
+    const setRow = (i, state, txt) => {
+      const r = rows[i]; if (!r) return;
+      r.className = 'team-row' + (state === 'waiting' ? ' waiting' : (state === 'done' ? ' done' : ''));
+      const st = r.querySelector('.team-status');
+      if (state === 'done') st.innerHTML = '<span class="check">✓</span> Done';
+      else if (state === 'working') st.innerHTML = '<span class="spinner"></span> ' + (txt || 'Working…');
+      else st.innerHTML = '<span class="spinner"></span> Queued';
+    };
+    rows.forEach((r, i) => setRow(i, 'waiting'));
+
+    await createSite();
+    if (!createdSlug) { setRow(0, 'working', 'Something went wrong — try again'); studioRunning = false; return; }
+
+    try {
+      setRow(0, 'working', 'Mapping your site…');
+      const planRes = await apiFetch('/api/generate-plan', { method: 'POST', body: JSON.stringify({ site: createdSlug }) });
+      const planData = await planRes.json().catch(() => ({}));
+      if (planData.status !== 'ok' || !Array.isArray(planData.pages) || !planData.pages.length) throw new Error('plan failed');
+      setRow(0, 'done');
+      const pages = planData.pages;
+      setRow(1, 'working', 'Designing…'); setRow(3, 'working', 'Writing content…');
+      for (let i = 0; i < pages.length; i++) {
+        setRow(2, 'working', 'Building ' + (i + 1) + '/' + pages.length + ': ' + pages[i].title);
+        try { await (await apiFetch('/api/generate-page', { method: 'POST', body: JSON.stringify({ site: createdSlug, page: pages[i], pages }) })).json(); }
+        catch (e) { /* skip a page that failed; keep building the rest */ }
+      }
+      setRow(1, 'done'); setRow(2, 'done'); setRow(3, 'done');
+    } catch (e) {
+      // Fallback so the site is never empty: a templated starter.
+      try { await apiFetch('/api/seed-site', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }); } catch (_) {}
+      rows.forEach((r, i) => setRow(i, 'done'));
+    }
+
+    const link = document.getElementById('openEditorBtn');
+    link.href = '/editor?site=' + encodeURIComponent(createdSlug);
+    link.textContent = 'Open in Editor →';
+    document.getElementById('buildHead').style.display='none';
+    document.getElementById('teamList').style.display='none';
+    document.getElementById('buildDone').style.display='block';
+    studioRunning = false;
   }
 
   function goTo(n){

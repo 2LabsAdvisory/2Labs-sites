@@ -39,6 +39,15 @@ const BRAND_TOOL = {
         required: ['heading', 'body'],
       },
       voice: { type: 'array', items: { type: 'string' }, description: '3–5 tone adjectives.' },
+      content: {
+        type: 'object',
+        description: 'On IMPORT, extract the org identity from the scanned page (verbatim facts; do not invent). Omit/empty on blank mode.',
+        properties: {
+          org_name: { type: 'string', description: "The organization's name." },
+          mission: { type: 'string', description: 'A one-to-two sentence mission/summary of what they do and who for.' },
+          offers: { type: 'array', items: { type: 'string' }, description: 'Their main programs/services/offerings (short labels).' },
+        },
+      },
     },
     required: ['rationale', 'colors', 'typography', 'voice'],
   },
@@ -54,6 +63,8 @@ function systemPrompt() {
     'Produce a COMPLETE color system: CORE (2–3; on import preserve the real primary/secondary unless they fail contrast), AI ACCENTS (1–3 harmonious additions the brand is missing), SEMANTIC (success/warning/error/info, on-brand but unmistakable), and NEUTRALS (5–7 ink→paper ramp tuned to the core temperature). Also a heading/body type pairing and 3–5 voice adjectives.',
     '',
     'HARD STANDARD — ACCESSIBILITY (non-negotiable): every foreground/background pairing the site will use must pass WCAG 2.2 AA (4.5:1 normal text, 3:1 large text/UI). Choose colors that pass; do not ship a failing pairing.',
+    '',
+    'On IMPORT, also extract the organization name, a concise mission/summary, and their main offerings from the scanned page — as `content` — preserving real facts exactly (never invent). On blank mode, leave `content` empty.',
     '',
     'Every hex must be #RRGGBB. Name things clearly — this is shown to the client and saved to their Brand Guidelines. Return via the submit_brand tool only.',
   ].join('\n');
@@ -151,7 +162,7 @@ module.exports = async function (context, req) {
 
     context.res = {
       status: 200,
-      body: { status: 'ok', mode, scanned: !!scan, brand, rationale: brand.rationale || '', a11y },
+      body: { status: 'ok', mode, scanned: !!scan, brand, rationale: brand.rationale || '', a11y, content: brand.content || null },
     };
   } catch (err) {
     context.log.error(err);
