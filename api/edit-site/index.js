@@ -23,9 +23,9 @@ const { recordEdit } = require('../lib/usageStore');
 const { getAsset } = require('../lib/assetStore');
 const { putResult } = require('../lib/editResultStore');
 const { renderDraft } = require('../lib/renderDraft');
-const { siteRoot, brand, org } = require('../lib/siteConfig');
+const { siteRoot, brand, org, DEFAULT_SITE } = require('../lib/siteConfig');
 
-const CLIENT_ID = brand.clientId;
+// The draft namespace and the render root are both the site slug (per-site).
 
 // Builder-app pages the AI must never touch (they ARE this editor UI).
 const PROTECTED = new Set([
@@ -139,6 +139,8 @@ module.exports = async function (context, req) {
   // The client sends a requestId so it can poll for the result if this request
   // outlives the gateway's client-side timeout (page creation can take ~80s).
   const requestId = req.body && req.body.requestId;
+  // Which site's drafts/project this edit targets (namespace + render root).
+  const site = (req.body && req.body.site) || DEFAULT_SITE;
   if ((!prompt || typeof prompt !== 'string' || !prompt.trim()) && attachments.length === 0) {
     context.res = { status: 400, body: { error: 'A non-empty "prompt" string is required.' } };
     return;
@@ -152,9 +154,9 @@ module.exports = async function (context, req) {
   try {
     // 1. Gather the current site (client pages + nav/layout), draft-or-disk.
     const context_files = {};
-    for (const p of await listSitePages()) context_files[p] = await effectiveContent(p);
+    for (const p of await listSitePages(site)) context_files[p] = await effectiveContent(p, site);
     for (const p of CONTEXT_EXTRAS) {
-      const c = await effectiveContent(p);
+      const c = await effectiveContent(p, site);
       if (c != null) context_files[p] = c;
     }
 
@@ -196,12 +198,12 @@ module.exports = async function (context, req) {
     let files = [];
     let deletions = [];
     if (toolUse.name === 'edit_files') {
-      files = await applyTargetedEdits(toolUse.input.edits);
+      files = await applyTargetedEdits(toolUse.input.edits, site);
     } else if (toolUse.name === 'delete_pages') {
       deletions = (Array.isArray(toolUse.input.delete) ? toolUse.input.delete : []).filter(Boolean);
       for (const p of deletions) if (!isEditablePath(p)) throw new Error(`Not allowed to delete "${p}".`);
       if (deletions.length === 0) throw new Error('No pages to delete were specified.');
-      files = Array.isArray(toolUse.input.edits) && toolUse.input.edits.length ? await applyTargetedEdits(toolUse.input.edits) : [];
+      files = Array.isArray(toolUse.input.edits) && toolUse.input.edits.length ? await applyTargetedEdits(toolUse.input.edits, site) : [];
     } else {
       files = Array.isArray(toolUse.input.files) ? toolUse.input.files : [];
     }
@@ -218,15 +220,15 @@ module.exports = async function (context, req) {
     let primary = isEditablePath(primary_path) && !deletedSet.has(primary_path) ? primary_path : null;
     if (!primary) primary = (files.find((f) => !deletedSet.has(f.path)) || {}).path || 'src/pages/index.astro';
     const primaryFile = files.find((f) => f.path === primary);
-    const primaryContent = primaryFile ? primaryFile.content : await effectiveContent(primary);
+    const primaryContent = primaryFile ? primaryFile.content : await effectiveContent(primary, site);
     if (primaryContent == null) throw new Error('Could not find a page to preview after the change.');
 
     // 4. Render the primary page FIRST — a broken edit fails here and is not
     //    saved. Overlay every non-deleted edited file so nav/layout changes show
     //    live in the preview; exclude anything being deleted.
     const overlay = {};
-    for (const p of await listDraftFiles(CLIENT_ID)) {
-      const c = await getDraftFile(CLIENT_ID, p);
+    for (const p of await listDraftFiles(site)) {
+      const c = await getDraftFile(site, p);
       if (!isDeleted(c)) overlay[p] = c;
     }
     for (const f of files) overlay[f.path] = f.content;
@@ -235,7 +237,7 @@ module.exports = async function (context, req) {
     let html;
     const tRender = Date.now();
     try {
-      html = await renderDraft(primary, primaryContent, overlay);
+      html = await renderDraft(primary, primaryContent, overlay, site);
     } catch (e) {
       throw new Error(`render: ${e.message}`);
     }
@@ -247,12 +249,12 @@ module.exports = async function (context, req) {
     //    either way because the snapshot is taken before any change.
     try {
       const snapshot = {};
-      for (const p of await listDraftFiles(CLIENT_ID)) snapshot[p] = await getDraftFile(CLIENT_ID, p);
-      await saveUndoManifest(CLIENT_ID, snapshot);
-      for (const f of files) await setDraftFile(CLIENT_ID, f.path, f.content);
+      for (const p of await listDraftFiles(site)) snapshot[p] = await getDraftFile(site, p);
+      await saveUndoManifest(site, snapshot);
+      for (const f of files) await setDraftFile(site, f.path, f.content);
       for (const p of deletions) {
-        if (fs.existsSync(path.join(siteRoot(), p))) await markDeleted(CLIENT_ID, p);
-        else await removeDraftFile(CLIENT_ID, p);
+        if (fs.existsSync(path.join(siteRoot(site), p))) await markDeleted(site, p);
+        else await removeDraftFile(site, p);
       }
     } catch (e) {
       throw new Error(`draft-save: ${e.message}`);
@@ -299,7 +301,7 @@ module.exports = async function (context, req) {
  * compound in order. Errors clearly if a snippet isn't found so the model (or
  * user) can retry — a bad match must never silently drop the change.
  */
-async function applyTargetedEdits(edits) {
+async function applyTargetedEdits(edits, site) {
   if (!Array.isArray(edits) || edits.length === 0) throw new Error('No edits were produced.');
   const byPath = new Map();
   for (const e of edits) {
@@ -308,7 +310,7 @@ async function applyTargetedEdits(edits) {
       throw new Error('An edit was missing its search or replacement text.');
     }
     if (!byPath.has(e.path)) {
-      const cur = await effectiveContent(e.path);
+      const cur = await effectiveContent(e.path, site);
       if (cur == null) throw new Error(`Can't edit "${e.path}" — that page doesn't exist yet.`);
       byPath.set(e.path, cur);
     }
@@ -332,25 +334,25 @@ function isEditablePath(p) {
 }
 
 /** Effective current content: draft if present, else disk, else null. */
-async function effectiveContent(relPath) {
-  const draft = await getDraftFile(CLIENT_ID, relPath);
+async function effectiveContent(relPath, site) {
+  const draft = await getDraftFile(site, relPath);
   if (isDeleted(draft)) return null; // tombstoned — treat as gone
   if (draft != null) return draft;
-  const abs = path.join(siteRoot(), relPath);
+  const abs = path.join(siteRoot(site), relPath);
   return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : null;
 }
 
 /** The client's site pages (disk + draft), excluding builder-app pages. */
-async function listSitePages() {
+async function listSitePages(site) {
   const set = new Set();
-  const dir = path.join(siteRoot(), 'src/pages');
+  const dir = path.join(siteRoot(site), 'src/pages');
   if (fs.existsSync(dir)) {
     for (const f of fs.readdirSync(dir)) if (f.endsWith('.astro')) set.add(`src/pages/${f}`);
   }
   const deleted = new Set();
-  for (const p of await listDraftFiles(CLIENT_ID)) {
+  for (const p of await listDraftFiles(site)) {
     if (!p.startsWith('src/pages/') || !p.endsWith('.astro')) continue;
-    if (isDeleted(await getDraftFile(CLIENT_ID, p))) deleted.add(p);
+    if (isDeleted(await getDraftFile(site, p))) deleted.add(p);
     else set.add(p);
   }
   return [...set].filter((p) => !PROTECTED.has(p) && !deleted.has(p));

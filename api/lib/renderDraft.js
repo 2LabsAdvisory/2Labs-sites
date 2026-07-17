@@ -16,9 +16,9 @@
  */
 
 const path = require('node:path');
-const { siteRoot } = require('./siteConfig');
+const { siteRoot, DEFAULT_SITE } = require('./siteConfig');
 
-const PROJECT_ROOT = siteRoot();
+const PROJECT_ROOT = siteRoot(); // default site root — kept for tests/back-compat
 
 const stripQuery = (id) => {
   const i = id.indexOf('?');
@@ -32,17 +32,19 @@ const stripQuery = (id) => {
  *        e.g. { 'src/components/Header.astro': '<updated nav>' }
  * @returns {Promise<string>} rendered HTML
  */
-async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}) {
+async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}, siteId = DEFAULT_SITE) {
   const { experimental_AstroContainer: AstroContainer } = await import('astro/container');
   const { getViteConfig } = await import('astro/config');
   const { createServer } = await import('vite');
 
+  const projectRoot = siteRoot(siteId); // render against THIS site's project
+
   // Overlay: absolute file path -> content. Primary overrides any same-path entry.
   const overlay = new Map();
   for (const [rel, content] of Object.entries(overlayFiles || {})) {
-    overlay.set(path.join(PROJECT_ROOT, rel), content);
+    overlay.set(path.join(projectRoot, rel), content);
   }
-  overlay.set(path.join(PROJECT_ROOT, primaryRelPath), primaryContent);
+  overlay.set(path.join(projectRoot, primaryRelPath), primaryContent);
 
   const overlayPlugin = {
     name: '2labs:overlay',
@@ -63,7 +65,7 @@ async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}) {
   };
 
   const cfgFn = await getViteConfig({
-    root: PROJECT_ROOT,
+    root: projectRoot,
     server: { middlewareMode: true, hmr: false },
     appType: 'custom',
     logLevel: 'silent',
@@ -72,7 +74,7 @@ async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}) {
   const server = await createServer(await cfgFn({ command: 'serve', mode: 'development' }));
 
   try {
-    const primaryAbs = path.join(PROJECT_ROOT, primaryRelPath);
+    const primaryAbs = path.join(projectRoot, primaryRelPath);
     const mod = await server.ssrLoadModule(primaryAbs);
     const container = await AstroContainer.create();
     let html = await container.renderToString(mod.default);

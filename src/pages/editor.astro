@@ -354,7 +354,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     async function navigatePreview(href) {
       setPreviewWorking(true);
       try {
-        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: href }) });
+        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: href, site: SITE }) });
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) { setTimeout(signOut, 200); return; }
         if (data.status === 'ok' && typeof data.html === 'string') { renderIntoPreview(data.html); setPreviewLabel(data.file); }
@@ -373,7 +373,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     async function refreshCurrentPreview() {
       try {
         const route = (pageSelect && pageSelect.value) || '/';
-        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: route }) });
+        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: route, site: SITE }) });
         const data = await res.json().catch(() => ({}));
         if (data.status === 'ok' && typeof data.html === 'string') { renderIntoPreview(data.html); setPreviewLabel(data.file); setStatus(!!data.hasDrafts); setCanRevert(!!data.hasDrafts); }
       } catch (e) { /* best-effort */ }
@@ -395,7 +395,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     async function loadInitialPreview() {
       setPreviewWorking(true, 'Loading your site…');
       try {
-        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: '/' }) });
+        const res = await apiFetch('/api/preview-page', { method: 'POST', body: JSON.stringify({ path: '/', site: SITE }) });
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) { setTimeout(signOut, 200); return; }
         if (data.status === 'ok' && typeof data.html === 'string') {
@@ -426,7 +426,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
     const pageSelect = document.getElementById('pageSelect');
     async function loadPages(selectRoute) {
       try {
-        const res = await apiFetch('/api/list-pages');
+        const res = await apiFetch('/api/list-pages?site=' + encodeURIComponent(SITE));
         if (!res.ok) return;
         const data = await res.json();
         const pages = (data.pages || []);
@@ -490,7 +490,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       const requestId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2));
       try {
         const attachments = atts.map((a) => ({ id: a.id, url: a.url, name: a.name, type: a.type }));
-        const res = await apiFetch('/api/edit-site', { method: 'POST', body: JSON.stringify({ prompt, attachments, requestId }) });
+        const res = await apiFetch('/api/edit-site', { method: 'POST', body: JSON.stringify({ prompt, attachments, requestId, site: SITE }) });
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) { thinking.el.remove(); addAssistant('Your session has expired. Redirecting you to sign in…', { error: true }); setTimeout(signOut, 1200); return; }
         if (res.ok && data.status === 'ok') { thinking.el.remove(); applyEditResult(data); return; }
@@ -636,7 +636,7 @@ const LIVE_URL = 'https://red-hill-0fb2bdf10.7.azurestaticapps.net';
       revertBtn.disabled = true; revertBtn.innerHTML = '<span class="spin"></span> Reverting…';
       setPreviewWorking(true);
       try {
-        const res = await apiFetch('/api/revert-draft', { method: 'POST', body: '{}' });
+        const res = await apiFetch('/api/revert-draft', { method: 'POST', body: JSON.stringify({ site: SITE }) });
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) { setTimeout(signOut, 200); return; }
         if (!res.ok) { addAssistant(data.detail ? `Revert failed — ${data.detail}` : (data.error || 'Revert failed.'), { error: true }); revertBtn.innerHTML = label; setCanRevert(true); return; }

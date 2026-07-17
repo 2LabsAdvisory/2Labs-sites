@@ -7,9 +7,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { listDraftFiles, getDraftFile, isDeleted } = require('../lib/draftStore');
-const { siteRoot, brand } = require('../lib/siteConfig');
+const { siteRoot, DEFAULT_SITE } = require('../lib/siteConfig');
 
-const CLIENT_ID = brand.clientId;
 // Builder-app pages never belong to a client site, but guard anyway.
 const NON_PAGES = new Set(['src/pages/editor.astro', 'src/pages/dashboard.astro', 'src/pages/login.astro']);
 
@@ -31,9 +30,10 @@ module.exports = async function (context, req) {
     context.res = { status: 401, body: { error: 'Authentication required.' } };
     return;
   }
+  const site = (req.query && req.query.site) || DEFAULT_SITE;
   try {
     const set = new Set();
-    const dir = path.join(siteRoot(), 'src/pages');
+    const dir = path.join(siteRoot(site), 'src/pages');
     if (fs.existsSync(dir)) {
       const walk = (d, rel) => {
         for (const f of fs.readdirSync(d, { withFileTypes: true })) {
@@ -45,9 +45,9 @@ module.exports = async function (context, req) {
       walk(dir, '');
     }
     const deleted = new Set();
-    for (const p of await listDraftFiles(CLIENT_ID)) {
+    for (const p of await listDraftFiles(site)) {
       if (!p.startsWith('src/pages/') || !p.endsWith('.astro')) continue;
-      if (isDeleted(await getDraftFile(CLIENT_ID, p))) deleted.add(p);
+      if (isDeleted(await getDraftFile(site, p))) deleted.add(p);
       else set.add(p);
     }
 

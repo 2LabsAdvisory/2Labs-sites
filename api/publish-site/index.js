@@ -19,9 +19,7 @@ const { Octokit } = require('@octokit/rest');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { listDraftFiles, getDraftFile, clearDraft, isDeleted } = require('../lib/draftStore');
 const { getSite } = require('../lib/siteRegistry');
-const { brand, DEFAULT_SITE } = require('../lib/siteConfig');
-
-const CLIENT_ID = brand.clientId;
+const { DEFAULT_SITE } = require('../lib/siteConfig');
 
 module.exports = async function (context, req) {
   const sessionEmail = await validateSessionEmail(getBearerToken(req));
@@ -59,7 +57,7 @@ module.exports = async function (context, req) {
     }
     const branch = gh.branch || 'main';
 
-    const files = await listDraftFiles(CLIENT_ID);
+    const files = await listDraftFiles(slug);
     if (files.length === 0) {
       context.res = { status: 200, body: { status: 'nothing_to_publish', message: 'No draft changes to publish.' } };
       return;
@@ -70,7 +68,7 @@ module.exports = async function (context, req) {
     const published = [];
 
     for (const filePath of files) {
-      const content = await getDraftFile(CLIENT_ID, filePath);
+      const content = await getDraftFile(slug, filePath);
       if (content == null) continue;
 
       // Current sha (needed to update or delete an existing file; absent = new).
@@ -103,7 +101,7 @@ module.exports = async function (context, req) {
     }
 
     // Only clear the draft once everything committed successfully.
-    await clearDraft(CLIENT_ID);
+    await clearDraft(slug);
 
     context.res = {
       status: 200,

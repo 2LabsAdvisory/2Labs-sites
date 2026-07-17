@@ -14,9 +14,7 @@ const path = require('node:path');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { getDraftFile, listDraftFiles, isDeleted } = require('../lib/draftStore');
 const { renderDraft } = require('../lib/renderDraft');
-const { siteRoot, brand } = require('../lib/siteConfig');
-
-const CLIENT_ID = brand.clientId;
+const { siteRoot, DEFAULT_SITE } = require('../lib/siteConfig');
 
 /** Map a site URL path to a page source file. Returns null if unsafe. */
 function pathToPageFile(urlPath) {
@@ -36,6 +34,7 @@ module.exports = async function (context, req) {
   }
 
   const urlPath = (req.body && req.body.path) || '/';
+  const site = (req.body && req.body.site) || DEFAULT_SITE;
   const file = pathToPageFile(urlPath);
   if (!file) {
     context.res = { status: 400, body: { error: 'Invalid page path.' } };
@@ -43,13 +42,13 @@ module.exports = async function (context, req) {
   }
 
   try {
-    let content = await getDraftFile(CLIENT_ID, file);
+    let content = await getDraftFile(site, file);
     if (isDeleted(content)) {
       context.res = { status: 200, body: { status: 'not_found', path: urlPath, message: `The “${urlPath}” page was deleted.` } };
       return;
     }
     if (content == null) {
-      const abs = path.join(siteRoot(), file);
+      const abs = path.join(siteRoot(site), file);
       content = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : null;
     }
     if (content == null) {
@@ -60,12 +59,12 @@ module.exports = async function (context, req) {
     // Overlay all drafts so nav/layout/components reflect the current draft
     // (skip tombstoned files so a deleted page can't leak back in).
     const overlay = {};
-    for (const p of await listDraftFiles(CLIENT_ID)) {
-      const c = await getDraftFile(CLIENT_ID, p);
+    for (const p of await listDraftFiles(site)) {
+      const c = await getDraftFile(site, p);
       if (!isDeleted(c)) overlay[p] = c;
     }
 
-    const html = await renderDraft(file, content, overlay);
+    const html = await renderDraft(file, content, overlay, site);
     context.res = {
       status: 200,
       body: { status: 'ok', path: urlPath, file, html, hasDrafts: Object.keys(overlay).length > 0 },

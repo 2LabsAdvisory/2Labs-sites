@@ -16,9 +16,8 @@ const { Octokit } = require('@octokit/rest');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { setDraftFile } = require('../lib/draftStore');
 const { renderDraft } = require('../lib/renderDraft');
-const { brand } = require('../lib/siteConfig');
+const { DEFAULT_SITE } = require('../lib/siteConfig');
 
-const CLIENT_ID = brand.clientId;
 const TARGET_FILE = 'src/pages/index.astro';
 
 module.exports = async function (context, req) {
@@ -30,6 +29,7 @@ module.exports = async function (context, req) {
 
   const sha = req.body && typeof req.body.sha === 'string' ? req.body.sha.trim() : '';
   const filePath = (req.body && typeof req.body.path === 'string' && req.body.path.trim()) || TARGET_FILE;
+  const site = (req.body && req.body.site) || DEFAULT_SITE;
   if (!sha) {
     context.res = { status: 400, body: { error: 'A commit "sha" is required.' } };
     return;
@@ -51,12 +51,12 @@ module.exports = async function (context, req) {
     });
     const content = Buffer.from(res.data.content, 'base64').toString('utf-8');
 
-    await setDraftFile(CLIENT_ID, filePath, content);
+    await setDraftFile(site, filePath, content);
 
     // Render the restored draft so the editor can show it immediately.
     let html = null;
     try {
-      html = await renderDraft(filePath, content);
+      html = await renderDraft(filePath, content, {}, site);
     } catch (err) {
       context.log.error(`restore-version render failed: ${err.message}`);
     }
