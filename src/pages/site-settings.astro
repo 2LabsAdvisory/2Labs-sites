@@ -1,7 +1,10 @@
 ---
-// site-settings.astro — per-site settings (?site=slug): name, domain, and the
-// GitHub repo the site publishes to. Saved to the registry via /api/save-site.
-// GitHub publishing is wired in a later step; these fields capture the config.
+// site-settings.astro — per-site settings (?site=slug).
+// App-shell layout with a left settings nav. LIVE sections: General (name/
+// domain), Brand Guidelines (colors + typography + voice, saved into the
+// site's Wizard Brief), Domain & hosting (GitHub publishing + delete).
+// MOCKUP-ONLY (not wired yet): SEO & findability, Media library, Team &
+// access, Billing, and the Logo / UI-token displays — visual placeholders.
 ---
 
 <!DOCTYPE html>
@@ -16,58 +19,146 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style is:global>
-  :root{ --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint-strong:#FFFBEB; --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC; --green:#2F8558; --green-bg:#EAF6EF; --radius:14px; --shadow:0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06); }
+  :root{
+    --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint-strong:#FFFBEB;
+    --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF;
+    --border:#E5E0DC; --green:#2F8558; --green-bg:#EAF6EF; --violet:#6D5AE0; --violet-bg:#F1EFFC;
+    --radius:14px; --shadow:0 1px 2px rgba(31,36,46,.04),0 10px 28px rgba(31,36,46,.06);
+  }
   *{box-sizing:border-box;}
-  body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; }
-  h1,h2,h3{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
+  html,body{height:100%;}
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+  h1,h2,h3,h4,.display{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-.01em; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
   a{ color:inherit; }
-  .app{ max-width:680px; margin:0 auto; padding:0 24px 64px; }
-  .topbar{ display:flex; align-items:center; gap:14px; padding:20px 0; margin-bottom:24px; border-bottom:1px solid var(--border); }
-  .back{ width:34px;height:34px;border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex;align-items:center;justify-content:center; color:var(--ink-soft); text-decoration:none; }
-  .back:hover{ color:var(--ink); border-color:var(--ink-soft); }
-  .topbar h1{ font-size:19px; margin:0; }
-  .topbar .sub{ font-size:12.5px; color:var(--ink-soft); }
-  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px 24px; margin-bottom:18px; }
-  .card h2{ font-size:15px; margin:0 0 4px; }
-  .card .card-sub{ font-size:12.5px; color:var(--ink-soft); margin:0 0 18px; }
-  .field{ margin-bottom:15px; }
+
+  /* topbar */
+  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+  .topbar-left{ display:flex; align-items:center; gap:14px; }
+  .back-btn{ width:32px;height:32px;border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex; align-items:center; justify-content:center; color:var(--ink-soft); cursor:pointer; font-size:15px; text-decoration:none; }
+  .back-btn:hover{ color:var(--ink); border-color:var(--ink-soft); }
+  .brand-mark{ width:30px;height:30px;border-radius:50%; overflow:hidden; flex-shrink:0; }
+  .brand-mark img{ width:100%;height:100%; object-fit:cover; display:block; }
+  .site-name{ font-weight:700; font-size:14.5px; }
+  .site-status{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-soft); }
+  .status-dot{ width:6px;height:6px;border-radius:50%; background:#4ADE80; }
+  .topbar-right{ display:flex; align-items:center; gap:10px; }
+  .btn{ border:none; border-radius:9px; padding:9px 16px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .btn-ghost{ background:var(--bg); color:var(--ink); border:1px solid var(--border); }
+  .btn-ghost:hover{ border-color:var(--ink-soft); }
+  .btn-primary{ background:var(--amber); color:var(--ink); }
+  .btn-primary:hover{ background:var(--amber-dark); }
+  .btn-primary:disabled{ opacity:.55; cursor:not-allowed; }
+  .saved{ font-size:12.5px; color:var(--green); font-weight:600; opacity:0; transition:opacity .2s; }
+  .saved.show{ opacity:1; }
+
+  .main{ flex:1; display:flex; min-height:0; }
+
+  /* settings nav */
+  .side{ width:230px; flex-shrink:0; border-right:1px solid var(--border); background:var(--surface); padding:22px 14px; overflow-y:auto; }
+  .side h5{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); margin:0 8px 10px; font-family:'Inter',sans-serif; font-weight:700; }
+  .nav-item{ display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:9px; font-size:13.5px; color:var(--ink-soft); cursor:pointer; font-weight:500; margin-bottom:2px; }
+  .nav-item .i{ width:16px; text-align:center; }
+  .nav-item .soon{ margin-left:auto; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); background:var(--bg); border:1px solid var(--border); padding:2px 6px; border-radius:100px; }
+  .nav-item:hover{ background:var(--bg); color:var(--ink); }
+  .nav-item.active{ background:var(--amber-tint-strong); color:var(--ink); font-weight:600; }
+  .nav-sep{ height:1px; background:var(--border); margin:12px 8px; }
+
+  /* content */
+  .content{ flex:1; overflow-y:auto; padding:28px 34px 60px; }
+  .section{ display:none; }
+  .section.active{ display:block; }
+  .content-head{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:6px; }
+  .content-head h2{ font-size:21px; margin:0; }
+  .content-sub{ font-size:13px; color:var(--ink-soft); margin:4px 0 22px; max-width:640px; line-height:1.5; }
+  .saved-pill{ display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color:var(--violet); background:var(--violet-bg); padding:6px 12px; border-radius:100px; white-space:nowrap; }
+
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px 24px; margin-bottom:18px; max-width:860px; }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .panel-head h3{ font-size:15px; margin:0; display:flex; align-items:center; gap:8px; }
+  .panel-desc{ font-size:12.5px; color:var(--ink-soft); margin:0 0 18px; line-height:1.5; }
+  .link{ font-size:12px; color:var(--amber-dark); font-weight:600; cursor:pointer; text-decoration:none; background:none; border:none; padding:0; font-family:'Inter',sans-serif; }
+  .link[disabled]{ color:var(--ink-soft); cursor:not-allowed; }
+
+  .field{ margin-bottom:15px; max-width:860px; }
   .field label{ display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px; }
   .field input{ width:100%; border:1px solid var(--border); border-radius:10px; padding:11px 13px; font-family:'Inter',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); }
   .field input.mono{ font-family:'IBM Plex Mono',monospace; font-size:13px; }
   .field input:focus{ outline:none; border-color:var(--amber); }
-  .field .hint{ font-size:11.5px; color:var(--ink-soft); margin-top:5px; }
+  .field .hint{ font-size:11.5px; color:var(--ink-soft); margin-top:5px; line-height:1.5; }
   .row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .note{ display:flex; gap:8px; font-size:12px; color:var(--ink-soft); background:var(--amber-tint-strong); border:1px solid #F3E3B8; border-radius:10px; padding:10px 13px; margin-bottom:18px; }
-  .actions{ display:flex; align-items:center; gap:12px; justify-content:flex-end; }
-  .btn-primary{ background:var(--amber); color:var(--ink); border:none; border-radius:10px; padding:11px 20px; font-weight:600; font-size:14px; cursor:pointer; }
-  .btn-primary:hover{ background:var(--amber-dark); } .btn-primary:disabled{ opacity:.5; cursor:not-allowed; }
-  .saved{ font-size:13px; color:var(--green); font-weight:600; opacity:0; transition:opacity .2s; }
-  .saved.show{ opacity:1; }
-  .panel-head{ display:flex; align-items:center; justify-content:space-between; }
-  .onboard-pill{ display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#6D5AE0; background:#F1EFFC; padding:5px 11px; border-radius:100px; white-space:nowrap; }
-  .brand-empty{ font-size:13px; color:var(--ink-soft); line-height:1.5; }
-  .color-group{ margin-bottom:16px; } .color-group:last-child{ margin-bottom:0; }
-  .color-group-label{ font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; margin-bottom:9px; display:flex; align-items:center; gap:8px; }
-  .ai-badge{ display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:700; color:#6D5AE0; background:#F1EFFC; border:1px solid #E1DCF7; padding:2px 7px; border-radius:100px; text-transform:uppercase; letter-spacing:.04em; }
-  .swatch-row{ display:flex; gap:10px; flex-wrap:wrap; }
-  .swatch{ text-align:center; width:64px; }
-  .swatch-color{ width:100%; height:48px; border-radius:10px; border:1px solid rgba(0,0,0,.08); cursor:pointer; padding:0; -webkit-appearance:none; appearance:none; }
-  .swatch-color::-webkit-color-swatch-wrapper{ padding:0; } .swatch-color::-webkit-color-swatch{ border:none; border-radius:9px; }
-  .swatch-hex{ width:100%; border:none; background:transparent; text-align:center; font-size:9.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; padding:3px 0 1px; text-transform:uppercase; }
+
+  .ai-badge{ display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:700; color:var(--violet); background:var(--violet-bg); border:1px solid #E1DCF7; padding:2px 7px; border-radius:100px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
+
+  /* colors */
+  .color-group{ margin-bottom:18px; } .color-group:last-child{ margin-bottom:0; }
+  .color-group-label{ font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .swatch-row{ display:flex; gap:12px; flex-wrap:wrap; }
+  .swatch{ width:74px; }
+  .swatch-color{ width:100%; height:56px; border-radius:11px; border:1px solid rgba(0,0,0,.08); cursor:pointer; padding:0; -webkit-appearance:none; appearance:none; }
+  .swatch-color::-webkit-color-swatch-wrapper{ padding:0; } .swatch-color::-webkit-color-swatch{ border:none; border-radius:10px; }
+  .swatch-hex{ width:100%; border:none; background:transparent; text-align:center; font-size:10px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; padding:4px 0 1px; text-transform:uppercase; }
   .swatch-hex:focus{ outline:none; color:var(--ink); background:var(--amber-tint-strong); border-radius:5px; }
-  .swatch-name{ font-size:10px; color:var(--ink); font-weight:600; }
-  .swatch.rec .swatch-color{ box-shadow:0 0 0 2px #fff, 0 0 0 3.5px #6D5AE0; }
-  .type-line{ font-size:13.5px; } .type-line b{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; }
+  .swatch-name{ font-size:10.5px; color:var(--ink); font-weight:600; text-align:center; }
+  .swatch.rec .swatch-color{ box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--violet); }
+  .a11y-note{ display:flex; align-items:center; gap:7px; margin-top:16px; font-size:11.5px; color:var(--green); background:var(--green-bg); padding:8px 12px; border-radius:8px; max-width:max-content; }
+  .brand-empty{ font-size:13px; color:var(--ink-soft); line-height:1.5; }
+
+  /* typography */
+  .type-row{ display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-top:1px solid var(--border); }
+  .type-row:first-of-type{ border-top:none; }
+  .type-left .t-role{ font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
+  .type-left .t-name{ font-size:18px; }
+  .t-name.head{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; }
+  .t-name.body{ font-family:'Inter',sans-serif; font-weight:500; }
+  .type-scale{ display:flex; gap:18px; align-items:baseline; flex-wrap:wrap; margin-top:6px; }
+  .type-scale span{ color:var(--ink); }
+  .ts-h1{ font-size:26px; font-weight:700; font-family:'Plus Jakarta Sans',sans-serif; }
+  .ts-h2{ font-size:20px; font-weight:700; font-family:'Plus Jakarta Sans',sans-serif; }
+  .ts-h3{ font-size:16px; font-weight:600; font-family:'Plus Jakarta Sans',sans-serif; }
+  .ts-body{ font-size:14px; }
+  .ts-small{ font-size:12px; color:var(--ink-soft); }
+  .select{ border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-family:'Inter',sans-serif; font-size:13px; background:var(--bg); color:var(--ink); }
+
+  /* logo */
+  .logo-row{ display:flex; gap:16px; flex-wrap:wrap; }
+  .logo-card{ border:1px solid var(--border); border-radius:11px; padding:14px; text-align:center; width:130px; }
+  .logo-box{ height:70px; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-bottom:9px; overflow:hidden; }
+  .logo-box.light{ background:#F6EDE1; }
+  .logo-box.dark{ background:var(--ink); }
+  .logo-box.mark{ background:var(--bg); border:1px dashed var(--border); }
+  .logo-box img{ width:44px; height:44px; object-fit:contain; }
+  .logo-box .wordmark{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:13px; }
+  .logo-cap{ font-size:11px; color:var(--ink-soft); }
+
+  /* tokens */
+  .token-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+  .token{ border:1px solid var(--border); border-radius:11px; padding:14px 16px; }
+  .token-label{ font-size:12px; font-weight:600; margin-bottom:4px; }
+  .token-val{ font-size:11.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; margin-bottom:10px; }
+  .radius-demo{ height:34px; background:var(--amber-tint-strong); border:1px solid #F3E3B8; }
+  .btn-demo{ display:inline-flex; padding:8px 16px; background:var(--amber); color:var(--ink); font-weight:700; font-size:12px; border-radius:9px; }
+  .space-demo{ display:flex; align-items:center; gap:6px; }
+  .space-demo i{ background:var(--amber); display:block; height:12px; }
   .voice-tags{ display:flex; gap:8px; flex-wrap:wrap; }
   .voice-tag{ background:var(--amber-tint-strong); color:var(--amber-dark); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; border:1px solid #F3E3B8; }
-  .a11y-note{ display:flex; align-items:center; gap:7px; margin-top:14px; font-size:11.5px; color:var(--green); background:var(--green-bg); padding:8px 12px; border-radius:8px; max-width:max-content; }
-  .card.danger{ border-color:#EBC9C4; }
-  .card.danger h2{ color:#C0392B; }
-  .dz-sub{ font-size:14px; margin:4px 0 4px; }
+
+  /* empty / coming-soon placeholders */
+  .placeholder{ background:var(--surface); border:1px dashed var(--border); border-radius:var(--radius); padding:40px 24px; text-align:center; max-width:860px; }
+  .placeholder .ico{ font-size:30px; }
+  .placeholder h4{ margin:12px 0 6px; font-size:16px; }
+  .placeholder p{ margin:0 auto; font-size:13px; color:var(--ink-soft); max-width:420px; line-height:1.55; }
+  .soon-pill{ display:inline-flex; align-items:center; gap:6px; font-size:10.5px; font-weight:700; color:var(--violet); background:var(--violet-bg); border:1px solid #E1DCF7; padding:4px 10px; border-radius:100px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:14px; }
+
+  /* danger */
+  .panel.danger{ border-color:#EBC9C4; }
+  .panel.danger h3{ color:#C0392B; }
   .dz-note{ font-size:12.5px; color:var(--ink-soft); margin:0 0 14px; line-height:1.5; }
-  .dz-hr{ border:none; border-top:1px solid var(--border); margin:24px 0; }
+  .dz-hr{ border:none; border-top:1px solid var(--border); margin:22px 0; }
   .btn-danger{ background:#C0392B; color:#fff; border:none; border-radius:10px; padding:11px 18px; font-weight:600; font-size:14px; cursor:pointer; }
   .btn-danger:hover{ background:#a5311f; } .btn-danger:disabled{ opacity:.45; cursor:not-allowed; }
+
+  /* modals */
   .modal-overlay{ position:fixed; inset:0; background:rgba(31,36,46,0.5); display:none; align-items:center; justify-content:center; padding:24px; z-index:60; }
   .modal-overlay.open{ display:flex; }
   .modal{ width:100%; max-width:440px; background:var(--surface); border-radius:16px; box-shadow:0 24px 60px rgba(15,23,42,.3); padding:24px; }
@@ -77,90 +168,242 @@
   .modal input:focus{ outline:none; border-color:#C0392B; }
   .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
   .modal-actions .cancel{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 16px; font-weight:600; font-size:13px; cursor:pointer; }
+
+  @media(max-width:720px){ .main{ flex-direction:column; } .side{ width:100%; border-right:none; border-bottom:1px solid var(--border); display:flex; flex-wrap:wrap; gap:4px; } .side h5,.nav-sep{ display:none; } .token-grid{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
-<div class="app">
+
   <div class="topbar">
-    <a class="back" href="/dashboard" aria-label="Back to dashboard">←</a>
-    <div><h1 id="siteName">Site settings</h1><div class="sub" id="siteSlug"></div></div>
-  </div>
-
-  <div class="card">
-    <h2>General</h2>
-    <p class="card-sub">Basic details for this site.</p>
-    <div class="field"><label for="fName">Site name</label><input id="fName" /></div>
-    <div class="field"><label for="fDomain">Domain</label><input id="fDomain" placeholder="example.org" /></div>
-  </div>
-
-  <div class="card" id="brandCard">
-    <div class="panel-head">
-      <h2>🎨 Brand Guidelines</h2>
-      <span class="onboard-pill" id="brandOrigin" style="display:none;">◈ Created from onboarding</span>
+    <div class="topbar-left">
+      <a class="back-btn" href="/dashboard" aria-label="Back to dashboard">←</a>
+      <div class="brand-mark"><img src="/logo.png" alt="2Labs" width="30" height="30" /></div>
+      <div>
+        <div class="site-name"><span id="tbName">Site</span> · Settings</div>
+        <div class="site-status"><span class="status-dot"></span> <span id="tbStatus">Brand synced to all pages</span></div>
+      </div>
     </div>
-    <p class="card-sub">Your brand system — applied across every page. Click a swatch to change it; edits save with the site.</p>
-    <div id="brandEmpty" class="brand-empty" style="display:none;">No brand system yet. Create one with the <a class="link" href="/new-site">New Site wizard</a> and it'll appear here to edit.</div>
-    <div id="brandBody" style="display:none;">
-      <div class="color-group"><div class="color-group-label">Core</div><div class="swatch-row" id="bgCore"></div></div>
-      <div class="color-group"><div class="color-group-label">Accents <span class="ai-badge">◈ AI</span></div><div class="swatch-row" id="bgAccent"></div></div>
-      <div class="color-group"><div class="color-group-label">Semantic</div><div class="swatch-row" id="bgSemantic"></div></div>
-      <div class="color-group"><div class="color-group-label">Neutrals</div><div class="swatch-row" id="bgNeutral"></div></div>
-      <div class="color-group"><div class="color-group-label">Typography</div><div class="type-line" id="bgType"></div></div>
-      <div class="color-group" id="bgVoiceWrap"><div class="color-group-label">Voice &amp; tone</div><div class="voice-tags" id="bgVoice"></div></div>
-      <div class="a11y-note" id="bgA11y" style="display:none;">♿ All text/background pairings pass WCAG 2.2 AA contrast</div>
+    <div class="topbar-right">
+      <span class="saved" id="saved">Saved ✓</span>
+      <button class="btn btn-ghost" id="discardBtn">Discard</button>
+      <button class="btn btn-primary" id="saveBtn">Save changes</button>
     </div>
   </div>
 
-  <div class="actions">
-    <span class="saved" id="saved">Saved ✓</span>
-    <button class="btn-primary" id="saveBtn">Save settings</button>
-  </div>
+  <div class="main">
 
-  <div class="card danger">
-    <h2>Danger zone</h2>
-    <p class="card-sub">These settings control publishing and deletion. A wrong change can break your live site, so each is confirmed before it applies.</p>
-
-    <h3 class="dz-sub">🌐 GitHub publishing</h3>
-    <p class="dz-note">Where this site publishes to. Changing it repoints <b>Publish</b> — get it wrong and publishing breaks or overwrites the wrong repo.</p>
-    <div class="row">
-      <div class="field"><label for="fOwner">Owner / org</label><input id="fOwner" class="mono" placeholder="2LabsAdvisory" /></div>
-      <div class="field"><label for="fRepo">Repository</label><input id="fRepo" class="mono" placeholder="acme-org-site" /></div>
+    <!-- settings nav -->
+    <div class="side">
+      <h5>Site settings</h5>
+      <div class="nav-item active" data-target="general"><span class="i">⚙️</span> General</div>
+      <div class="nav-item" data-target="brand"><span class="i">🎨</span> Brand Guidelines</div>
+      <div class="nav-item" data-target="domain"><span class="i">🌐</span> Domain &amp; hosting</div>
+      <div class="nav-item" data-target="seo"><span class="i">🔍</span> SEO &amp; findability <span class="soon">Soon</span></div>
+      <div class="nav-item" data-target="media"><span class="i">🖼️</span> Media library <span class="soon">Soon</span></div>
+      <div class="nav-sep"></div>
+      <h5>Organization</h5>
+      <div class="nav-item" data-target="team"><span class="i">👥</span> Team &amp; access <span class="soon">Soon</span></div>
+      <div class="nav-item" data-target="billing"><span class="i">💳</span> Billing <span class="soon">Soon</span></div>
     </div>
-    <div class="field"><label for="fBranch">Branch</label><input id="fBranch" class="mono" placeholder="main" /></div>
-    <div class="field"><label for="fToken">Access token</label><input id="fToken" class="mono" type="password" placeholder="github_pat_…" /><div class="hint">Fine-grained PAT with Contents: read &amp; write on this repo. Not stored in the site record — it'll go to secure config when publishing is turned on.</div></div>
-    <button class="btn-danger" id="saveGithubBtn">Save publishing settings</button>
 
-    <hr class="dz-hr" />
+    <!-- content -->
+    <div class="content">
 
-    <h3 class="dz-sub">🗑 Delete this site</h3>
-    <p class="dz-note">Permanently delete this site and all of its draft content. This cannot be undone.</p>
-    <button class="btn-danger" id="deleteBtn">Delete this site</button>
-  </div>
-</div>
+      <!-- GENERAL (live) -->
+      <div class="section active" data-section="general">
+        <div class="content-head"><div><h2>General</h2><p class="content-sub">Basic details for this site.</p></div></div>
+        <div class="panel">
+          <div class="field"><label for="fName">Site name</label><input id="fName" /></div>
+          <div class="field" style="margin-bottom:0;"><label for="fDomain">Domain</label><input id="fDomain" placeholder="example.org" /><div class="hint">The primary domain shown across the dashboard.</div></div>
+        </div>
+      </div>
 
-<div class="modal-overlay" id="githubModal">
-  <div class="modal">
-    <h3>Change publishing settings?</h3>
-    <p>This changes where <b id="gmName">this site</b> publishes to on the next <b>Publish</b>. A wrong owner/repo can overwrite the wrong repository. Type the site name to confirm:</p>
-    <input id="gmConfirm" placeholder="Site name" autocomplete="off" />
-    <div class="modal-actions">
-      <button class="cancel" id="gmCancel">Cancel</button>
-      <button class="btn-danger" id="gmSave" disabled>Save publishing settings</button>
+      <!-- BRAND GUIDELINES (colors + type + voice are live; logo + tokens are display) -->
+      <div class="section" data-section="brand">
+        <div class="content-head">
+          <div>
+            <h2>Brand Guidelines</h2>
+            <p class="content-sub">Your brand system — created during setup and applied automatically across every page. Edit anything here and the whole site updates on your next build.</p>
+          </div>
+          <div class="saved-pill" id="brandOrigin" style="display:none;">◈ Created from onboarding</div>
+        </div>
+
+        <div id="brandEmpty" class="placeholder" style="display:none;">
+          <div class="ico">🎨</div>
+          <h4>No brand system yet</h4>
+          <p>Create one with the <a class="link" href="/new-site">New Site wizard</a> and it'll appear here to edit.</p>
+        </div>
+
+        <div id="brandBody" style="display:none;">
+          <!-- color system (live) -->
+          <div class="panel">
+            <div class="panel-head"><h3>🎨 Color system</h3><button class="link" disabled title="Coming soon">Regenerate with AI</button></div>
+            <p class="panel-desc">Click a swatch to change it, or edit the hex. AI-recommended additions are ringed in violet.</p>
+            <div class="color-group"><div class="color-group-label">Core</div><div class="swatch-row" id="bgCore"></div></div>
+            <div class="color-group"><div class="color-group-label">Accents <span class="ai-badge">◈ AI recommended</span></div><div class="swatch-row" id="bgAccent"></div></div>
+            <div class="color-group"><div class="color-group-label">Semantic</div><div class="swatch-row" id="bgSemantic"></div></div>
+            <div class="color-group"><div class="color-group-label">Neutrals</div><div class="swatch-row" id="bgNeutral"></div></div>
+            <div class="a11y-note" id="bgA11y" style="display:none;">♿ All text/background pairings pass WCAG 2.2 AA contrast</div>
+          </div>
+
+          <!-- typography (live) -->
+          <div class="panel">
+            <div class="panel-head"><h3>🔤 Typography</h3></div>
+            <p class="panel-desc">Font families and the type scale used across headings and body copy.</p>
+            <div class="type-row">
+              <div class="type-left"><div class="t-role">Headings</div><div class="t-name head" id="headName">—</div></div>
+              <select class="select" id="headSelect"></select>
+            </div>
+            <div class="type-row">
+              <div class="type-left"><div class="t-role">Body</div><div class="t-name body" id="bodyName">—</div></div>
+              <select class="select" id="bodySelect"></select>
+            </div>
+            <div class="type-row" style="display:block;">
+              <div class="t-role" style="margin-bottom:8px;">Type scale</div>
+              <div class="type-scale" id="typeScale"></div>
+            </div>
+          </div>
+
+          <!-- logo (mockup / display) -->
+          <div class="panel">
+            <div class="panel-head"><h3>🏷️ Logo</h3><button class="link" disabled title="Coming soon">Upload new</button></div>
+            <p class="panel-desc">Prepared in light, dark, and mark-only variants for use across the site.</p>
+            <div class="logo-row">
+              <div class="logo-card"><div class="logo-box light"><img src="/logo.png" alt="Logo on light" /></div><div class="logo-cap">Light background</div></div>
+              <div class="logo-card"><div class="logo-box dark"><img src="/logo.png" alt="Logo on dark" /></div><div class="logo-cap">Dark background</div></div>
+              <div class="logo-card"><div class="logo-box mark"><span class="wordmark" id="logoWordmark" style="color:var(--ink);">2L</span></div><div class="logo-cap">Wordmark / favicon</div></div>
+            </div>
+          </div>
+
+          <!-- UI tokens (voice is live; the rest are derived display) -->
+          <div class="panel">
+            <div class="panel-head"><h3>🧩 UI tokens</h3></div>
+            <p class="panel-desc">Derived from your brand and reused by every component the builder generates.</p>
+            <div class="token-grid">
+              <div class="token">
+                <div class="token-label">Corner radius</div>
+                <div class="token-val">--radius: 10px</div>
+                <div class="radius-demo" style="border-radius:10px;"></div>
+              </div>
+              <div class="token">
+                <div class="token-label">Primary button</div>
+                <div class="token-val" id="btnTokenVal">bg primary · contrast text</div>
+                <span class="btn-demo" id="btnTokenDemo">Get started</span>
+              </div>
+              <div class="token">
+                <div class="token-label">Spacing scale</div>
+                <div class="token-val">4 · 8 · 12 · 16 · 24 · 32</div>
+                <div class="space-demo"><i style="width:4px;"></i><i style="width:8px;"></i><i style="width:12px;"></i><i style="width:16px;"></i><i style="width:24px;"></i></div>
+              </div>
+              <div class="token">
+                <div class="token-label">Voice &amp; tone <span class="ai-badge">◈ AI</span></div>
+                <div class="token-val" style="margin-bottom:8px;">Guides all written content</div>
+                <div class="voice-tags" id="bgVoice"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DOMAIN & HOSTING (GitHub publishing + delete are live) -->
+      <div class="section" data-section="domain">
+        <div class="content-head"><div><h2>Domain &amp; hosting</h2><p class="content-sub">Where this site lives and publishes to. These control your live site, so each change is confirmed before it applies.</p></div></div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>🌐 Custom domain <span class="ai-badge" style="color:var(--ink-soft);background:var(--bg);border-color:var(--border);">Soon</span></h3></div>
+          <p class="panel-desc">Connect your own domain. For now, edit the primary domain under General.</p>
+          <div class="field" style="margin-bottom:0;"><label>Primary domain</label><input id="fDomainMirror" placeholder="example.org" disabled /></div>
+        </div>
+
+        <div class="panel danger">
+          <div class="panel-head"><h3>🔁 GitHub publishing</h3></div>
+          <p class="dz-note">Where this site publishes to. Changing it repoints <b>Publish</b> — get it wrong and publishing breaks or overwrites the wrong repo.</p>
+          <div class="row">
+            <div class="field"><label for="fOwner">Owner / org</label><input id="fOwner" class="mono" placeholder="2LabsAdvisory" /></div>
+            <div class="field"><label for="fRepo">Repository</label><input id="fRepo" class="mono" placeholder="acme-org-site" /></div>
+          </div>
+          <div class="field"><label for="fBranch">Branch</label><input id="fBranch" class="mono" placeholder="main" /></div>
+          <div class="field"><label for="fToken">Access token</label><input id="fToken" class="mono" type="password" placeholder="github_pat_…" /><div class="hint">Fine-grained PAT with Contents: read &amp; write on this repo. Not stored in the site record — it'll go to secure config when publishing is turned on.</div></div>
+          <button class="btn-danger" id="saveGithubBtn">Save publishing settings</button>
+
+          <hr class="dz-hr" />
+
+          <h3 style="font-size:15px;margin:0 0 6px;color:#C0392B;">🗑 Delete this site</h3>
+          <p class="dz-note">Permanently delete this site and all of its draft content. This cannot be undone.</p>
+          <button class="btn-danger" id="deleteBtn">Delete this site</button>
+        </div>
+      </div>
+
+      <!-- SEO (mockup) -->
+      <div class="section" data-section="seo">
+        <div class="content-head"><div><h2>SEO &amp; findability</h2><p class="content-sub">Help people find this site on search engines and social.</p></div></div>
+        <div class="placeholder">
+          <div class="soon-pill">◈ Coming soon</div>
+          <div class="ico">🔍</div>
+          <h4>Search &amp; social settings</h4>
+          <p>Meta titles and descriptions, social share previews, sitemap, and a live search-health score — surfaced from each site's Overview. Not wired up yet.</p>
+        </div>
+      </div>
+
+      <!-- MEDIA (mockup) -->
+      <div class="section" data-section="media">
+        <div class="content-head"><div><h2>Media library</h2><p class="content-sub">Images used across this site, including AI-sourced photography.</p></div></div>
+        <div class="placeholder">
+          <div class="soon-pill">◈ Coming soon</div>
+          <div class="ico">🖼️</div>
+          <h4>Your media, in one place</h4>
+          <p>Uploaded and AI-sourced photos, reusable across pages from the editor. Not wired up yet.</p>
+        </div>
+      </div>
+
+      <!-- TEAM (mockup) -->
+      <div class="section" data-section="team">
+        <div class="content-head"><div><h2>Team &amp; access</h2><p class="content-sub">Who can view and edit this organization's sites.</p></div></div>
+        <div class="placeholder">
+          <div class="soon-pill">◈ Coming soon</div>
+          <div class="ico">👥</div>
+          <h4>Invite your team</h4>
+          <p>Add teammates, set roles, and control who can edit or publish. Not wired up yet.</p>
+        </div>
+      </div>
+
+      <!-- BILLING (mockup) -->
+      <div class="section" data-section="billing">
+        <div class="content-head"><div><h2>Billing</h2><p class="content-sub">Your plan, AI credits, and invoices.</p></div></div>
+        <div class="placeholder">
+          <div class="soon-pill">◈ Coming soon</div>
+          <div class="ico">💳</div>
+          <h4>Plan &amp; usage</h4>
+          <p>Manage your plan, track AI-credit usage against your limit, and download invoices. Not wired up yet.</p>
+        </div>
+      </div>
+
     </div>
   </div>
-</div>
 
-<div class="modal-overlay" id="deleteModal">
-  <div class="modal">
-    <h3>Delete this site?</h3>
-    <p>This permanently removes <b id="dmName">this site</b> and its unpublished drafts. This can’t be undone. Type the site name to confirm:</p>
-    <input id="dmConfirm" placeholder="Site name" autocomplete="off" />
-    <div class="modal-actions">
-      <button class="cancel" id="dmCancel">Cancel</button>
-      <button class="btn-danger" id="dmDelete" disabled>Delete site</button>
+  <div class="modal-overlay" id="githubModal">
+    <div class="modal">
+      <h3>Change publishing settings?</h3>
+      <p>This changes where <b id="gmName">this site</b> publishes to on the next <b>Publish</b>. A wrong owner/repo can overwrite the wrong repository. Type the site name to confirm:</p>
+      <input id="gmConfirm" placeholder="Site name" autocomplete="off" />
+      <div class="modal-actions">
+        <button class="cancel" id="gmCancel">Cancel</button>
+        <button class="btn-danger" id="gmSave" disabled>Save publishing settings</button>
+      </div>
     </div>
   </div>
-</div>
+
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <h3>Delete this site?</h3>
+      <p>This permanently removes <b id="dmName">this site</b> and its unpublished drafts. This can't be undone. Type the site name to confirm:</p>
+      <input id="dmConfirm" placeholder="Site name" autocomplete="off" />
+      <div class="modal-actions">
+        <button class="cancel" id="dmCancel">Cancel</button>
+        <button class="btn-danger" id="dmDelete" disabled>Delete site</button>
+      </div>
+    </div>
+  </div>
 
 <script>
   const TOKEN_KEY = '2labs_sites_token';
@@ -173,34 +416,92 @@
   const $ = (id) => document.getElementById(id);
   let currentBrief = null; // the site's Wizard Brief (holds the brand system)
 
-  // Editable swatch bound to a color object (mutated in place so save collects it).
+  const HEAD_FONTS = ['Plus Jakarta Sans', 'Poppins', 'Montserrat', 'Sora', 'Space Grotesk', 'Fraunces', 'DM Serif Display'];
+  const BODY_FONTS = ['Inter', 'Open Sans', 'Source Sans 3', 'Work Sans', 'Nunito Sans', 'Lato'];
+
+  // ---- left-nav section switching ----
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const target = item.dataset.target;
+      document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n === item));
+      document.querySelectorAll('.section').forEach((s) => s.classList.toggle('active', s.dataset.section === target));
+      $('content') && $('content').scrollTo && $('content').scrollTo(0, 0);
+    });
+  });
+
+  // ---- editable swatch bound to a color object (mutated in place) ----
   function makeSwatch(c, rec) {
     const wrap = document.createElement('div'); wrap.className = 'swatch' + (rec ? ' rec' : '');
     const color = document.createElement('input'); color.type = 'color'; color.className = 'swatch-color'; color.value = c.hex || '#000000';
     const hex = document.createElement('input'); hex.type = 'text'; hex.className = 'swatch-hex'; hex.value = c.hex || ''; hex.maxLength = 7;
     const name = document.createElement('div'); name.className = 'swatch-name'; name.textContent = c.name || '';
-    color.addEventListener('input', () => { hex.value = color.value.toUpperCase(); c.hex = color.value.toUpperCase(); });
-    hex.addEventListener('change', () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { color.value = hex.value; c.hex = hex.value.toUpperCase(); } });
+    color.addEventListener('input', () => { hex.value = color.value.toUpperCase(); c.hex = color.value.toUpperCase(); syncTokenDemo(); });
+    hex.addEventListener('change', () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { color.value = hex.value; c.hex = hex.value.toUpperCase(); syncTokenDemo(); } });
     wrap.append(color, hex, name); return wrap;
   }
+
+  function fillSelect(sel, options, current) {
+    sel.innerHTML = '';
+    const list = options.includes(current) || !current ? options : [current, ...options];
+    list.forEach((f) => { const o = document.createElement('option'); o.value = f; o.textContent = f; if (f === current) o.selected = true; sel.appendChild(o); });
+  }
+
+  // Update the primary-button token demo from the live brand primary.
+  function syncTokenDemo() {
+    const core = currentBrief && currentBrief.brand && currentBrief.brand.colors && currentBrief.brand.colors.core;
+    if (!core || !core[0]) return;
+    const primary = core[0].hex || '#F59F0A';
+    const demo = $('btnTokenDemo'); if (!demo) return;
+    demo.style.background = primary;
+    demo.style.color = bestTextOn(primary);
+    $('btnTokenVal').textContent = 'bg ' + (core[0].name || 'primary').toLowerCase() + ' · ' + (bestTextOn(primary) === '#FFFFFF' ? 'light' : 'dark') + ' text';
+  }
+  // Minimal luminance check to pick readable text on a swatch.
+  function bestTextOn(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#1F242E';
+    const n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const L = 0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255);
+    return L > 0.55 ? '#1F242E' : '#FFFFFF';
+  }
+
   function renderBrand() {
     const brand = currentBrief && currentBrief.brand;
     const colors = brand && brand.colors;
     if (!colors) { $('brandEmpty').style.display = 'block'; $('brandBody').style.display = 'none'; return; }
     $('brandEmpty').style.display = 'none'; $('brandBody').style.display = 'block';
-    $('brandOrigin').style.display = currentBrief.createdFrom === 'onboarding' || currentBrief.mode ? 'inline-flex' : 'none';
+    $('brandOrigin').style.display = (currentBrief.createdFrom === 'onboarding' || currentBrief.mode) ? 'inline-flex' : 'none';
     const fill = (id, arr, rec) => { const row = $(id); row.innerHTML = ''; (arr || []).forEach((c) => row.appendChild(makeSwatch(c, rec))); };
     fill('bgCore', colors.core, false);
     fill('bgAccent', colors.accents, true);
     fill('bgSemantic', colors.semantic, false);
     fill('bgNeutral', colors.neutral, false);
-    const t = brand.typography || {};
-    $('bgType').innerHTML = '<b>' + (t.heading || '—') + '</b> · ' + (t.body || '—');
+
+    // typography (live — selects mutate the brief)
+    const t = brand.typography || (brand.typography = {});
+    $('headName').textContent = t.heading || 'Plus Jakarta Sans';
+    $('bodyName').textContent = t.body || 'Inter';
+    fillSelect($('headSelect'), HEAD_FONTS, t.heading || 'Plus Jakarta Sans');
+    fillSelect($('bodySelect'), BODY_FONTS, t.body || 'Inter');
+    $('headSelect').onchange = () => { t.heading = $('headSelect').value; $('headName').textContent = t.heading; };
+    $('bodySelect').onchange = () => { t.body = $('bodySelect').value; $('bodyName').textContent = t.body; };
+    const sc = t.scale || { h1: 32, h2: 24, h3: 19, body: 16, small: 13 };
+    $('typeScale').innerHTML =
+      '<span class="ts-h1">H1 ' + sc.h1 + '</span>' +
+      '<span class="ts-h2">H2 ' + sc.h2 + '</span>' +
+      '<span class="ts-h3">H3 ' + sc.h3 + '</span>' +
+      '<span class="ts-body">Body ' + sc.body + '</span>' +
+      '<span class="ts-small">Small ' + sc.small + '</span>';
+
+    // voice (live)
     const voice = brand.voice || [];
-    $('bgVoice').innerHTML = ''; $('bgVoiceWrap').style.display = voice.length ? 'block' : 'none';
+    $('bgVoice').innerHTML = '';
     voice.forEach((v) => { const s = document.createElement('span'); s.className = 'voice-tag'; s.textContent = v; $('bgVoice').appendChild(s); });
+
     if (brand.a11y) { $('bgA11y').style.display = 'flex'; $('bgA11y').textContent = brand.a11y.passed ? '♿ All text/background pairings pass WCAG 2.2 AA contrast' : '⚠ Some pairings need adjustment for WCAG 2.2 AA'; }
+    syncTokenDemo();
   }
+
+  function initials(name) { return (name || '2Labs').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '2L'; }
 
   async function load() {
     if (!slug) { location.replace('/dashboard'); return; }
@@ -210,10 +511,13 @@
       if (res.status === 401) { signOut(); return; }
       const site = (data.sites || []).find((s) => s.slug === slug);
       if (!site) { location.replace('/dashboard'); return; }
-      $('siteName').textContent = site.name;
-      $('siteSlug').textContent = site.domain || site.slug;
+      $('tbName').textContent = site.name || site.slug;
       $('fName').value = site.name || '';
       $('fDomain').value = site.domain || '';
+      $('fDomainMirror').value = site.domain || '';
+      $('fName').addEventListener('input', () => { $('tbName').textContent = $('fName').value || site.slug; });
+      $('fDomain').addEventListener('input', () => { $('fDomainMirror').value = $('fDomain').value; });
+      $('logoWordmark').textContent = initials(site.name);
       const gh = site.github || {};
       $('fOwner').value = gh.owner || '';
       $('fRepo').value = gh.repo || '';
@@ -225,7 +529,7 @@
 
   const flashSaved = () => { const s = $('saved'); s.classList.add('show'); setTimeout(() => s.classList.remove('show'), 1800); };
 
-  // Main save: general details + brand. GitHub publishing has its own gated save.
+  // Save changes: general details + brand system (colors, typography, voice).
   $('saveBtn').addEventListener('click', async () => {
     const btn = $('saveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
     try {
@@ -233,20 +537,22 @@
         slug,
         name: $('fName').value.trim(),
         domain: $('fDomain').value.trim(),
-        ...(currentBrief ? { brief: currentBrief } : {}), // persist edited brand system
+        ...(currentBrief ? { brief: currentBrief } : {}),
       };
       const res = await apiFetch('/api/save-site', { method: 'POST', body: JSON.stringify(body) });
       if (res.status === 401) { signOut(); return; }
       if (res.ok) flashSaved();
     } catch (e) {}
-    btn.disabled = false; btn.textContent = 'Save settings';
+    btn.disabled = false; btn.textContent = 'Save changes';
   });
+
+  $('discardBtn').addEventListener('click', () => location.reload());
 
   // Delete flow — type the site name to confirm.
   const dm = $('deleteModal');
-  const wantName = () => ($('siteName').textContent || slug || '').trim().toLowerCase();
+  const wantName = () => ($('fName').value || slug || '').trim().toLowerCase();
   $('deleteBtn').addEventListener('click', () => {
-    $('dmName').textContent = $('siteName').textContent || slug;
+    $('dmName').textContent = $('fName').value || slug;
     $('dmConfirm').value = ''; $('dmDelete').disabled = true;
     dm.classList.add('open'); $('dmConfirm').focus();
   });
@@ -266,7 +572,7 @@
   // GitHub publishing save — type the site name to confirm (guards Publish).
   const gm = $('githubModal');
   $('saveGithubBtn').addEventListener('click', () => {
-    $('gmName').textContent = $('siteName').textContent || slug;
+    $('gmName').textContent = $('fName').value || slug;
     $('gmConfirm').value = ''; $('gmSave').disabled = true;
     gm.classList.add('open'); $('gmConfirm').focus();
   });
