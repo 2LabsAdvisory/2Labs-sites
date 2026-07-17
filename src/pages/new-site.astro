@@ -256,18 +256,19 @@
           <div class="ai-avatar">◈</div>
           <div>
             <div class="ai-name">2Labs Brand AI · Senior Designer</div>
-            <p class="if-import" style="display:none;">I kept your core colors, added an accent for energy and a highlight for calls-to-action, and built out semantic and neutral scales so every state stays on-brand. All pairings pass <b>WCAG&nbsp;2.2&nbsp;AA</b> contrast.</p>
-            <p class="if-blank" style="display:none;">I've drafted a warm, trustworthy palette that suits community &amp; nonprofit work — a confident core with an accent and highlight, plus full semantic and neutral scales. Everything passes <b>WCAG&nbsp;2.2&nbsp;AA</b>.</p>
+            <p class="if-import" id="calloutImport" style="display:none;">I kept your core colors, added an accent for energy and a highlight for calls-to-action, and built out semantic and neutral scales so every state stays on-brand. All pairings pass <b>WCAG&nbsp;2.2&nbsp;AA</b> contrast.</p>
+            <p class="if-blank" id="calloutBlank" style="display:none;">I've drafted a warm, trustworthy palette that suits community &amp; nonprofit work — a confident core with an accent and highlight, plus full semantic and neutral scales. Everything passes <b>WCAG&nbsp;2.2&nbsp;AA</b>.</p>
           </div>
         </div>
-        <div class="review-block">
+        <div id="brandBusy" style="display:none; align-items:center; gap:10px; padding:16px; border:1px solid var(--border); border-radius:12px; margin-bottom:14px; font-size:12.5px; color:var(--ink-soft);"><span class="spinner"></span> Our senior designer is putting your brand system together…</div>
+        <div class="review-block" id="colorBlock">
           <div class="review-block-head"><h4>🎨 Color system</h4><span class="edit-link">Regenerate</span></div>
           <p class="block-note">Click any swatch to pick a new color, or edit the hex. Recommended additions are ringed in violet.</p>
           <div class="color-group"><div class="color-group-label">Core</div><div class="swatch-row" id="coreRow"></div></div>
           <div class="color-group"><div class="color-group-label">AI accents <span class="ai-badge">◈ Recommended</span></div><div class="swatch-row" id="accentRow"></div></div>
           <div class="color-group"><div class="color-group-label">Semantic <span class="ai-badge">◈ Added</span></div><div class="swatch-row" id="semanticRow"></div></div>
           <div class="color-group"><div class="color-group-label">Neutrals <span class="ai-badge">◈ Added</span></div><div class="swatch-row" id="neutralRow"></div></div>
-          <div class="a11y-note">♿ All text/background pairings checked — WCAG 2.2 AA compliant</div>
+          <div class="a11y-note" id="a11yNote">♿ All text/background pairings checked — WCAG 2.2 AA compliant</div>
         </div>
         <div class="review-block">
           <div class="review-block-head"><h4>🔤 Typography</h4><span class="edit-link">Edit</span></div>
@@ -426,6 +427,49 @@
     for(const id in map){ const row=document.getElementById(id); row.innerHTML=''; map[id].forEach(c=>row.appendChild(makeSwatch(c))); }
   }
 
+  // ---- Studio: Brand Extraction + Senior Brand Designer (Build Brief §3.1) ----
+  const brandState = { import:null, blank:null };
+  function up(hex){ const h=String(hex||'').replace('#','').trim(); return /^[0-9a-fA-F]{6}$/.test(h) ? ('#'+h).toUpperCase() : '#000000'; }
+  function setBrandBusy(v){
+    document.getElementById('brandBusy').style.display = v ? 'flex' : 'none';
+    document.getElementById('colorBlock').style.display = v ? 'none' : '';
+    const next = document.getElementById('nextBtn'); if(next) next.disabled = v;
+  }
+  function applyBrand(data){
+    const c = data.brand.colors || {};
+    PALETTES[mode] = {
+      core:(c.core||[]).map(x=>({name:x.name,hex:up(x.hex)})),
+      accent:(c.accents||[]).map(x=>({name:x.name,hex:up(x.hex),rec:true})),
+      semantic:(c.semantic||[]).map(x=>({name:x.name,hex:up(x.hex)})),
+      neutral:(c.neutral||[]).map(x=>({name:x.name,hex:up(x.hex)}))
+    };
+    const t = data.brand.typography || {};
+    if(t.heading) document.getElementById('headFont').textContent = t.heading;
+    if(t.body) document.getElementById('bodyFont').textContent = t.body;
+    if(data.rationale){ document.getElementById('calloutImport').textContent = data.rationale; document.getElementById('calloutBlank').textContent = data.rationale; }
+    if(data.a11y){
+      const r = (data.a11y.report||[]).map(x=>x.ratio).filter(Boolean).sort((a,b)=>a-b)[0];
+      document.getElementById('a11yNote').textContent = data.a11y.passed
+        ? ('♿ All text/background pairings pass WCAG 2.2 AA' + (r?(' — lowest '+r+':1'):''))
+        : '⚠ Some pairings need adjustment for WCAG 2.2 AA — tweak the hex values';
+    }
+    renderColors();
+  }
+  async function ensureBrand(){
+    if(brandState[mode]){ applyBrand(brandState[mode]); return; }
+    setBrandBusy(true);
+    try{
+      const payload = mode==='import'
+        ? { mode, url:(document.getElementById('urlInput').value||'').trim() }
+        : { mode, org:CONTENT[mode].org, mission:CONTENT[mode].mission, offers:[], goal:CONTENT[mode].goal };
+      const res = await apiFetch('/api/generate-brand', { method:'POST', body: JSON.stringify(payload) });
+      const data = await res.json().catch(()=>({}));
+      if(data.status==='ok' && data.brand && data.brand.colors){ brandState[mode]=data; applyBrand(data); }
+      else { renderColors(); } // graceful fallback to the starter palette
+    }catch(e){ renderColors(); }
+    finally{ setBrandBusy(false); }
+  }
+
   function makeChip(text){ const c=document.createElement('span'); c.className='chip'; c.contentEditable='true'; c.textContent=text; return c; }
   function renderContent(){
     const d = CONTENT[mode];
@@ -451,7 +495,8 @@
     const p = PALETTES[mode];
     const sw=document.getElementById('summarySwatches'); sw.innerHTML='';
     [...p.core, ...p.accent].forEach(c=>{ const i=document.createElement('i'); i.style.background=c.hex; sw.appendChild(i); });
-    document.getElementById('summaryFonts').innerHTML='<span>Fonts:</span> Plus Jakarta Sans · Inter';
+    const t = (brandState[mode] && brandState[mode].brand && brandState[mode].brand.typography) || {};
+    document.getElementById('summaryFonts').innerHTML='<span>Fonts:</span> '+(t.heading||'Plus Jakarta Sans')+' · '+(t.body||'Inter');
     const org=(document.getElementById('orgName').value||'').trim()||'(your org)';
     const offerCount=document.querySelectorAll('#offerRow .chip:not(.add)').length;
     const goal=CONTENT[mode].goal||'(not set)';
@@ -465,13 +510,16 @@
     const p = PALETTES[mode];
     const offers = [...document.querySelectorAll('#offerRow .chip:not(.add)')].map(c=>c.textContent.trim()).filter(Boolean);
     const map = (a)=>a.map(c=>({ name:c.name, hex:c.hex, ...(c.rec?{ai_recommended:true}:{}) }));
+    const bs = brandState[mode];
+    const t = (bs && bs.brand && bs.brand.typography) || {};
     return {
       mode,
-      source: { url: (document.getElementById('urlInput').value||'').trim(), scanned: mode==='import' },
+      source: { url: (document.getElementById('urlInput').value||'').trim(), scanned: !!(bs && bs.scanned) },
       brand: {
         colors: { core:map(p.core), accents:map(p.accent), semantic:map(p.semantic), neutral:map(p.neutral) },
-        typography: { heading:'Plus Jakarta Sans', body:'Inter', scale:{h1:32,h2:24,h3:19,body:16,small:13} },
-        a11y: { standard:'WCAG 2.2 AA', passed:true }
+        typography: { heading:t.heading||'Plus Jakarta Sans', body:t.body||'Inter', scale:{h1:32,h2:24,h3:19,body:16,small:13} },
+        voice: (bs && bs.brand && bs.brand.voice) || [],
+        a11y: (bs && bs.a11y) || { standard:'WCAG 2.2 AA', passed:true }
       },
       content: {
         org_name: (document.getElementById('orgName').value||'').trim(),
@@ -520,7 +568,7 @@
 
   function goTo(n){
     if(n<1)n=1; if(n>total)n=total; current=n; render();
-    if(n===2) renderColors();
+    if(n===2) ensureBrand();
     if(n===3){ renderContent(); updateOrgPill(); }
     if(n===4) renderSummary();
     if(n===5) runBuild();
