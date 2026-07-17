@@ -9,54 +9,72 @@
  */
 
 const { setDraftFile } = require('./draftStore');
-const { bestTextOn } = require('./contrast');
+const { bestTextOn, relativeLuminance } = require('./contrast');
 
-function toRgb(hex) {
-  const h = String(hex || '').replace('#', '');
-  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
-  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
-}
+const isHex = (v) => /^#[0-9a-fA-F]{6}$/.test(String(v || ''));
+function toRgb(hex) { const h = String(hex || '').replace('#', ''); return /^[0-9a-fA-F]{6}$/.test(h) ? [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) : null; }
 const toHex = (rgb) => '#' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
-function darken(hex, f = 0.85) { const c = toRgb(hex); return c ? toHex(c.map((v) => v * f)) : hex; }
-function tint(hex, f = 0.9) { const c = toRgb(hex); return c ? toHex(c.map((v) => v + (255 - v) * f)) : hex; }
-const byName = (arr, name) => (arr || []).find((c) => String(c.name || '').toLowerCase() === name)?.hex;
+function darken(hex, f = 0.82) { const c = toRgb(hex); return c ? toHex(c.map((v) => v * f)) : hex; }
+function mix(a, b, t) { const x = toRgb(a), y = toRgb(b); return x && y ? toHex(x.map((v, i) => v + (y[i] - v) * t)) : a; }
+const byName = (arr, name) => (arr || []).find((c) => String(c.name || '').toLowerCase().includes(name))?.hex;
+const first = (arr, i) => (arr && arr[i] && isHex(arr[i].hex) ? arr[i].hex : null);
 
+// Robust brand → tokens. Ink/paper are chosen by LUMINANCE (darkest / lightest
+// neutral) so body text is always readable regardless of how the palette is
+// ordered or named — this is what was producing black-on-white / white-on-white.
 function tokensFromBrand(brand) {
   const colors = (brand && brand.colors) || {};
   const core = colors.core || [];
-  const neutral = colors.neutral || [];
   const accents = colors.accents || [];
-  const pick = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : d);
+  let neutral = (colors.neutral || []).filter((c) => isHex(c.hex));
+  if (neutral.length < 2) neutral = [{ hex: '#1F242E' }, { hex: '#676F7E' }, { hex: '#E5E0DC' }, { hex: '#F7F8FA' }];
 
-  const primary = pick(core[1] && core[1].hex, pick(accents[0] && accents[0].hex, pick(core[0] && core[0].hex, '#2F5DA8')));
-  const ink = pick(byName(neutral, 'ink') || (neutral[0] && neutral[0].hex), '#1F242E');
-  const inkSoft = pick(byName(neutral, 'muted') || (neutral[2] && neutral[2].hex), '#676F7E');
-  const border = pick(byName(neutral, 'line') || (neutral[neutral.length - 2] && neutral[neutral.length - 2].hex), '#E5E0DC');
-  const bg = pick(byName(core, 'surface') || byName(neutral, 'paper') || (neutral[neutral.length - 1] && neutral[neutral.length - 1].hex), '#F8F7F6');
+  const lum = (h) => { const l = relativeLuminance(h); return l == null ? 0.5 : l; };
+  const sorted = [...neutral].sort((a, b) => lum(a.hex) - lum(b.hex));
+  const ink = sorted[0].hex;                    // darkest
+  const paper = sorted[sorted.length - 1].hex;  // lightest
+  const inkSoft = byName(neutral, 'muted') || byName(neutral, 'slate') || mix(ink, paper, 0.42);
+  const border = byName(neutral, 'line') || mix(ink, paper, 0.86);
+
+  const primary = first(core, 0) || byName(accents, '') || first(accents, 0) || '#2F5DA8';
+  const secondary = first(core, 1) || primary;
+  const accent = first(accents, 0) || secondary;
   const t = (brand && brand.typography) || {};
   const heading = (t.heading || 'Plus Jakarta Sans').replace(/'/g, '');
   const body = (t.body || 'Inter').replace(/'/g, '');
 
   return `:root {
-  --bg: ${bg};
+  --bg: ${paper};
   --surface: #FFFFFF;
+  --surface-2: ${mix(paper, ink, 0.04)};
   --ink: ${ink};
   --ink-soft: ${inkSoft};
   --border: ${border};
   --primary: ${primary};
   --primary-dark: ${darken(primary)};
-  --primary-tint-strong: ${tint(primary)};
-  --on-primary: ${bestTextOn(primary)};
+  --primary-soft: ${mix(primary, '#FFFFFF', 0.88)};
+  --primary-contrast: ${bestTextOn(primary)};
+  --secondary: ${secondary};
+  --secondary-contrast: ${bestTextOn(secondary)};
+  --accent: ${accent};
+  --accent-contrast: ${bestTextOn(accent)};
   --success: #2F8558;
   --radius: 14px;
-  --shadow: 0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06);
+  --shadow: 0 1px 2px rgba(16,24,40,0.04), 0 10px 28px rgba(16,24,40,0.08);
   --font-heading: '${heading}', sans-serif;
   --font-body: '${body}', sans-serif;
+  /* aliases — so a page that reaches for a common name still resolves */
+  --on-primary: var(--primary-contrast);
+  --text: var(--ink); --text-muted: var(--ink-soft); --muted: var(--ink-soft);
+  --background: var(--bg); --card: var(--surface); --heading: var(--ink);
+  --color-primary: var(--primary); --primary-tint-strong: var(--primary-soft);
 }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
-h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; }
+h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; color: var(--ink); }
+p, li { color: var(--ink); }
 a { color: inherit; }
+img { max-width: 100%; }
 `;
 }
 

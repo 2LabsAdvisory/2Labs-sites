@@ -39,6 +39,7 @@ const CONTEXT_EXTRAS = [
   'src/components/Header.astro',
   'src/components/Footer.astro',
   'src/layouts/BaseLayout.astro',
+  'src/styles/tokens.css', // so edits reuse the brand tokens (and can fix colour issues)
 ];
 
 const APPLY_TOOL = {

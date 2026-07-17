@@ -49,7 +49,7 @@ module.exports = async function (context, req) {
       'HARD REQUIREMENTS:',
       '- Return the COMPLETE .astro file. It MUST `import BaseLayout from "../layouts/BaseLayout.astro";` and wrap the page in <BaseLayout title="…" description="…" orgName={…} primaryCta={…}> … </BaseLayout>.',
       '- Pass a unique, specific SEO title and a ≤155-char meta description via those props. Use exactly one <h1>. Logical heading order.',
-      '- Use ONLY the brand CSS variables for all colour/typography/spacing (scoped <style> is fine). Never hardcode off-brand colours or fonts.',
+      '- Use ONLY the design tokens listed below for colours and fonts (scoped <style> is fine). NEVER invent CSS variable names, NEVER declare your own :root variables, NEVER hardcode off-brand colours. Every section MUST set an explicit background and a readable, contrasting text colour — white-on-white or dark-on-dark is a failure. The brand colour must be clearly visible (buttons, links, a bold band, highlights).',
       '- Real, on-voice copy that moves the reader toward the page’s primary action. No lorem ipsum, no placeholder text.',
       '- Do NOT use <img> with invented external URLs. Use styled sections, colour blocks, gradients, icons (emoji/inline SVG) instead.',
       '- Accessible: semantic landmarks, sufficient contrast (tokens already pass AA), descriptive link text, labelled controls.',

@@ -11,17 +11,21 @@ const isHome = (slug) => { const k = kebab(slug); return k === '' || k === 'home
 function routeFor(slug) { return isHome(slug) ? '/' : '/' + kebab(slug); }
 function pageFileFor(slug) { return isHome(slug) ? 'src/pages/index.astro' : `src/pages/${kebab(slug)}.astro`; }
 
-/** A short brand cheat-sheet for page prompts (CSS vars are already defined). */
+/** The exact design tokens available to a page (already defined in tokens.css). */
 function brandSummary(brand) {
-  const c = (brand && brand.colors) || {};
-  const hex = (a, i) => (a && a[i] && a[i].hex) || '';
   const t = (brand && brand.typography) || {};
   return [
-    'Brand CSS variables are already defined in tokens.css — USE THEM, never hardcode colors/fonts:',
-    '  --primary, --primary-dark, --on-primary (text on primary), --ink, --ink-soft, --border, --bg, --surface, --success',
-    '  --font-heading, --font-body, --radius, --shadow',
-    `Palette for reference — primary ${hex(c.core, 1) || hex(c.accents, 0)}, ink ${hex(c.neutral, 0)}, surface ${hex(c.core, 2) || '#fff'}.`,
-    `Fonts — headings ${t.heading || 'sans-serif'}, body ${t.body || 'sans-serif'}. Voice — ${(brand && brand.voice || []).join(', ') || 'clear, warm'}.`,
+    'DESIGN TOKENS — these CSS variables are ALREADY defined in tokens.css. Use ONLY these; do NOT invent new variable names and do NOT declare your own :root variables:',
+    '  Surfaces/text: --bg (page bg, light), --surface (#fff cards), --surface-2 (subtle), --ink (body text, dark), --ink-soft (secondary text), --border',
+    '  Brand: --primary, --primary-dark, --primary-soft (light wash for section bgs), --primary-contrast (text ON primary), --secondary, --secondary-contrast, --accent, --accent-contrast, --success',
+    '  Type/shape: --font-heading, --font-body, --radius, --shadow',
+    `Fonts — headings ${t.heading || 'sans-serif'}, body ${t.body || 'sans-serif'}. Voice — ${(brand && brand.voice || []).join(', ') || 'clear, warm, credible'}.`,
+    '',
+    'READABILITY RULES (critical — the site must never be unreadable):',
+    '- Every section MUST set an explicit background AND a contrasting text colour. Never rely on defaults.',
+    '- On a colored background use its contrast token: background:var(--primary) → color:var(--primary-contrast); var(--secondary)→var(--secondary-contrast); var(--accent)→var(--accent-contrast).',
+    '- On light backgrounds (--bg, --surface, --surface-2, --primary-soft) use color:var(--ink) for text and var(--ink-soft) for secondary text — NEVER white text on a light background.',
+    '- Give the page visual rhythm by alternating section backgrounds among --bg, --surface, --primary-soft, and one bold band using --primary (with --primary-contrast text). Use --primary/--accent for buttons, links, and highlights so the brand colour is clearly present.',
   ].join('\n');
 }
 

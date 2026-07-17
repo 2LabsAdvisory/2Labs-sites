@@ -7,21 +7,32 @@
 :root {
   --bg: #F8F7F6;
   --surface: #FFFFFF;
+  --surface-2: #F1EFED;
   --ink: #1F242E;
   --ink-soft: #676F7E;
   --border: #E5E0DC;
   --primary: #2F5DA8;
-  --primary-dark: #244a86;
-  --primary-tint-strong: #EEF3FA;
-  --on-primary: #FFFFFF;
+  --primary-dark: #244A86;
+  --primary-soft: #E4ECF6;
+  --primary-contrast: #FFFFFF;
+  --secondary: #1F2430;
+  --secondary-contrast: #FFFFFF;
+  --accent: #2E9E8F;
+  --accent-contrast: #FFFFFF;
   --success: #2F8558;
   --radius: 14px;
-  --shadow: 0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06);
+  --shadow: 0 1px 2px rgba(16,24,40,0.04), 0 10px 28px rgba(16,24,40,0.08);
   --font-heading: 'Plus Jakarta Sans', sans-serif;
   --font-body: 'Inter', sans-serif;
+  --on-primary: var(--primary-contrast);
+  --text: var(--ink); --text-muted: var(--ink-soft); --muted: var(--ink-soft);
+  --background: var(--bg); --card: var(--surface); --heading: var(--ink);
+  --color-primary: var(--primary); --primary-tint-strong: var(--primary-soft);
 }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
-h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; }
+h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; color: var(--ink); }
+p, li { color: var(--ink); }
 a { color: inherit; }
+img { max-width: 100%; }
 main { min-height: 40vh; }
