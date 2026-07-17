@@ -43,6 +43,24 @@
   .btn-primary:hover{ background:var(--amber-dark); } .btn-primary:disabled{ opacity:.5; cursor:not-allowed; }
   .saved{ font-size:13px; color:var(--green); font-weight:600; opacity:0; transition:opacity .2s; }
   .saved.show{ opacity:1; }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; }
+  .onboard-pill{ display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#6D5AE0; background:#F1EFFC; padding:5px 11px; border-radius:100px; white-space:nowrap; }
+  .brand-empty{ font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .color-group{ margin-bottom:16px; } .color-group:last-child{ margin-bottom:0; }
+  .color-group-label{ font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; margin-bottom:9px; display:flex; align-items:center; gap:8px; }
+  .ai-badge{ display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:700; color:#6D5AE0; background:#F1EFFC; border:1px solid #E1DCF7; padding:2px 7px; border-radius:100px; text-transform:uppercase; letter-spacing:.04em; }
+  .swatch-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .swatch{ text-align:center; width:64px; }
+  .swatch-color{ width:100%; height:48px; border-radius:10px; border:1px solid rgba(0,0,0,.08); cursor:pointer; padding:0; -webkit-appearance:none; appearance:none; }
+  .swatch-color::-webkit-color-swatch-wrapper{ padding:0; } .swatch-color::-webkit-color-swatch{ border:none; border-radius:9px; }
+  .swatch-hex{ width:100%; border:none; background:transparent; text-align:center; font-size:9.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; padding:3px 0 1px; text-transform:uppercase; }
+  .swatch-hex:focus{ outline:none; color:var(--ink); background:var(--amber-tint-strong); border-radius:5px; }
+  .swatch-name{ font-size:10px; color:var(--ink); font-weight:600; }
+  .swatch.rec .swatch-color{ box-shadow:0 0 0 2px #fff, 0 0 0 3.5px #6D5AE0; }
+  .type-line{ font-size:13.5px; } .type-line b{ font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; }
+  .voice-tags{ display:flex; gap:8px; flex-wrap:wrap; }
+  .voice-tag{ background:var(--amber-tint-strong); color:var(--amber-dark); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; border:1px solid #F3E3B8; }
+  .a11y-note{ display:flex; align-items:center; gap:7px; margin-top:14px; font-size:11.5px; color:var(--green); background:var(--green-bg); padding:8px 12px; border-radius:8px; max-width:max-content; }
 </style>
 </head>
 <body>
@@ -59,6 +77,24 @@
     <p class="card-sub">Basic details for this site.</p>
     <div class="field"><label for="fName">Site name</label><input id="fName" /></div>
     <div class="field"><label for="fDomain">Domain</label><input id="fDomain" placeholder="example.org" /></div>
+  </div>
+
+  <div class="card" id="brandCard">
+    <div class="panel-head">
+      <h2>🎨 Brand Guidelines</h2>
+      <span class="onboard-pill" id="brandOrigin" style="display:none;">◈ Created from onboarding</span>
+    </div>
+    <p class="card-sub">Your brand system — applied across every page. Click a swatch to change it; edits save with the site.</p>
+    <div id="brandEmpty" class="brand-empty" style="display:none;">No brand system yet. Create one with the <a class="link" href="/new-site">New Site wizard</a> and it'll appear here to edit.</div>
+    <div id="brandBody" style="display:none;">
+      <div class="color-group"><div class="color-group-label">Core</div><div class="swatch-row" id="bgCore"></div></div>
+      <div class="color-group"><div class="color-group-label">Accents <span class="ai-badge">◈ AI</span></div><div class="swatch-row" id="bgAccent"></div></div>
+      <div class="color-group"><div class="color-group-label">Semantic</div><div class="swatch-row" id="bgSemantic"></div></div>
+      <div class="color-group"><div class="color-group-label">Neutrals</div><div class="swatch-row" id="bgNeutral"></div></div>
+      <div class="color-group"><div class="color-group-label">Typography</div><div class="type-line" id="bgType"></div></div>
+      <div class="color-group" id="bgVoiceWrap"><div class="color-group-label">Voice &amp; tone</div><div class="voice-tags" id="bgVoice"></div></div>
+      <div class="a11y-note" id="bgA11y" style="display:none;">♿ All text/background pairings pass WCAG 2.2 AA contrast</div>
+    </div>
   </div>
 
   <div class="card">
@@ -87,6 +123,36 @@
   }
   const slug = new URLSearchParams(location.search).get('site');
   const $ = (id) => document.getElementById(id);
+  let currentBrief = null; // the site's Wizard Brief (holds the brand system)
+
+  // Editable swatch bound to a color object (mutated in place so save collects it).
+  function makeSwatch(c, rec) {
+    const wrap = document.createElement('div'); wrap.className = 'swatch' + (rec ? ' rec' : '');
+    const color = document.createElement('input'); color.type = 'color'; color.className = 'swatch-color'; color.value = c.hex || '#000000';
+    const hex = document.createElement('input'); hex.type = 'text'; hex.className = 'swatch-hex'; hex.value = c.hex || ''; hex.maxLength = 7;
+    const name = document.createElement('div'); name.className = 'swatch-name'; name.textContent = c.name || '';
+    color.addEventListener('input', () => { hex.value = color.value.toUpperCase(); c.hex = color.value.toUpperCase(); });
+    hex.addEventListener('change', () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { color.value = hex.value; c.hex = hex.value.toUpperCase(); } });
+    wrap.append(color, hex, name); return wrap;
+  }
+  function renderBrand() {
+    const brand = currentBrief && currentBrief.brand;
+    const colors = brand && brand.colors;
+    if (!colors) { $('brandEmpty').style.display = 'block'; $('brandBody').style.display = 'none'; return; }
+    $('brandEmpty').style.display = 'none'; $('brandBody').style.display = 'block';
+    $('brandOrigin').style.display = currentBrief.createdFrom === 'onboarding' || currentBrief.mode ? 'inline-flex' : 'none';
+    const fill = (id, arr, rec) => { const row = $(id); row.innerHTML = ''; (arr || []).forEach((c) => row.appendChild(makeSwatch(c, rec))); };
+    fill('bgCore', colors.core, false);
+    fill('bgAccent', colors.accents, true);
+    fill('bgSemantic', colors.semantic, false);
+    fill('bgNeutral', colors.neutral, false);
+    const t = brand.typography || {};
+    $('bgType').innerHTML = '<b>' + (t.heading || '—') + '</b> · ' + (t.body || '—');
+    const voice = brand.voice || [];
+    $('bgVoice').innerHTML = ''; $('bgVoiceWrap').style.display = voice.length ? 'block' : 'none';
+    voice.forEach((v) => { const s = document.createElement('span'); s.className = 'voice-tag'; s.textContent = v; $('bgVoice').appendChild(s); });
+    if (brand.a11y) { $('bgA11y').style.display = 'flex'; $('bgA11y').textContent = brand.a11y.passed ? '♿ All text/background pairings pass WCAG 2.2 AA contrast' : '⚠ Some pairings need adjustment for WCAG 2.2 AA'; }
+  }
 
   async function load() {
     if (!slug) { location.replace('/dashboard'); return; }
@@ -104,6 +170,8 @@
       $('fOwner').value = gh.owner || '';
       $('fRepo').value = gh.repo || '';
       $('fBranch').value = gh.branch || 'main';
+      currentBrief = site.brief || null;
+      renderBrand();
     } catch (e) {}
   }
 
@@ -115,6 +183,7 @@
         name: $('fName').value.trim(),
         domain: $('fDomain').value.trim(),
         github: { owner: $('fOwner').value.trim(), repo: $('fRepo').value.trim(), branch: $('fBranch').value.trim() || 'main' },
+        ...(currentBrief ? { brief: currentBrief } : {}), // persist edited brand system
       };
       const res = await apiFetch('/api/save-site', { method: 'POST', body: JSON.stringify(body) });
       if (res.status === 401) { signOut(); return; }
