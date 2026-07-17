@@ -55,6 +55,7 @@ module.exports = async function (context, req) {
     ].filter(Boolean);
     const imgQuery = (imgBits.join(' ').trim() || content.mission || orgName).slice(0, 80);
     const images = await fetchStockImages(imgQuery, 5);
+    context.log(`[generate-page] images: q="${imgQuery}" -> ${images.length} (${images.length ? new URL(images[0].url).hostname : 'none'})`);
 
     const system = [
       'You are an award-winning art director and senior front-end engineer at a top-tier studio (calibre of Pentagram, Locomotive, Active Theory, Instrument). Build ONE page of a site that looks like it cost hundreds of thousands of dollars — modern, creative, editorial, unmistakably premium. Never generic, never a template.',
@@ -67,10 +68,10 @@ module.exports = async function (context, req) {
       '- Typography: use the brand fonts with a strong modular scale, tuned letter-spacing/line-height, and occasional accent treatment (a highlighted word, an underline flourish in the brand colour).',
       '- Responsive and flawless at mobile / tablet / desktop; use CSS grid/flex, clamp() for fluid type, and aspect-ratio boxes so nothing shifts.',
       '',
-      'IMAGERY:',
+      'IMAGERY (this is critical — do not skip):',
       images.length
-        ? '- Real photographs are provided below. USE THEM prominently — a full-bleed hero image and imagery in key sections. Always layer a brand-tinted gradient overlay over photos for mood and text legibility, use object-fit:cover inside aspect-ratio containers, add rounded corners/masks where fitting, and write descriptive alt text. Use the exact URLs; do not alter them.'
-        : '- No photos are available, so create striking gradient/mesh/SVG art instead — full-bleed gradient heroes, abstract shapes, pattern fills. Never output a broken <img> or an empty grey box.',
+        ? `- ${images.length} real photographs are provided below. You MUST USE THEM — a full-bleed hero photo AND photos in at least 2 more sections (feature blocks, split layouts, cards, gallery). Layer a brand-tinted gradient overlay over photos for mood + text legibility, use object-fit:cover inside aspect-ratio containers, rounded corners/masks where fitting, and descriptive alt text. Embed the EXACT URLs given, unchanged. NEVER invent, guess, or hardcode any other image URL — use ONLY the URLs provided below. A page with no <img> when photos were provided is a failure.`
+        : '- No photos are available, so create striking gradient/mesh/SVG art instead — full-bleed gradient heroes, abstract shapes, pattern fills. Do NOT invent or hardcode any external image URL (no made-up unsplash.com/other links) — they render broken. Never output a broken <img> or an empty grey box.',
       '',
       'HARD REQUIREMENTS:',
       '- Return the COMPLETE .astro file. It MUST `import BaseLayout from "../layouts/BaseLayout.astro";` and wrap the page in <BaseLayout title="…" description="…" orgName={…} primaryCta={…}> … </BaseLayout>.',
