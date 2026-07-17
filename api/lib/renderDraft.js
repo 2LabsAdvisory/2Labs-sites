@@ -16,7 +16,12 @@
  */
 
 const path = require('node:path');
+const os = require('node:os');
 const { siteRoot, DEFAULT_SITE } = require('./siteConfig');
+
+// The deployed API filesystem is read-only, so Vite can't write its dep cache
+// under node_modules/.vite. Point it at the writable temp dir.
+const VITE_CACHE_DIR = path.join(os.tmpdir(), '2labs-vite-cache');
 
 const PROJECT_ROOT = siteRoot(); // default site root — kept for tests/back-compat
 
@@ -71,6 +76,7 @@ async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}, si
 
   const cfgFn = await getViteConfig({
     root: projectRoot,
+    cacheDir: VITE_CACHE_DIR, // writable (deployed node_modules is read-only)
     server: { middlewareMode: true, hmr: false },
     appType: 'custom',
     logLevel: 'silent',

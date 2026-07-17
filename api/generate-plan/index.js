@@ -43,6 +43,18 @@ const PLAN_TOOL = {
   },
 };
 
+// Deterministic sitemap from the brief — used if the model call fails, so a
+// site is always multi-page (Home + offers/services + About + Contact).
+function fallbackPlan(content) {
+  const offers = (content.offers || []).filter(Boolean).slice(0, 4);
+  const pages = [{ slug: 'home', title: 'Home', purpose: 'Introduce the organization and drive the primary goal.', sections: [] }];
+  if (offers.length && offers.length <= 3) offers.forEach((o) => pages.push({ slug: o, title: o, purpose: `Explain the ${o} offering and its benefits.`, sections: [] }));
+  else pages.push({ slug: 'services', title: offers.length ? 'Services' : 'What We Do', purpose: 'Overview of what the organization offers.', sections: [] });
+  pages.push({ slug: 'about', title: 'About', purpose: 'Who we are, our story, and why to trust us.', sections: [] });
+  pages.push({ slug: 'contact', title: 'Contact', purpose: 'How to reach us and take the primary action.', sections: [] });
+  return pages;
+}
+
 module.exports = async function (context, req) {
   const email = await validateSessionEmail(getBearerToken(req));
   if (!email || !isEmailAllowed(email)) { context.res = { status: 401, body: { error: 'Authentication required.' } }; return; }
@@ -69,16 +81,23 @@ module.exports = async function (context, req) {
     ].join('\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5', max_tokens: 4000, thinking: { type: 'disabled' },
-      system, tools: [PLAN_TOOL], tool_choice: { type: 'tool', name: 'submit_plan' },
-      messages: [{ role: 'user', content: user }],
-    });
-    const tool = (response.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_plan');
-    if (!tool || !Array.isArray(tool.input.pages) || tool.input.pages.length === 0) throw new Error('No sitemap was produced.');
+    let modelPages = [];
+    try {
+      const stream = anthropic.messages.stream({
+        model: 'claude-sonnet-5', max_tokens: 12000, thinking: { type: 'disabled' },
+        system, tools: [PLAN_TOOL], tool_choice: { type: 'tool', name: 'submit_plan' },
+        messages: [{ role: 'user', content: user }],
+      });
+      const response = await stream.finalMessage();
+      const tool = (response.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_plan');
+      if (tool && Array.isArray(tool.input.pages)) modelPages = tool.input.pages.filter((p) => p && p.slug && p.title);
+    } catch (e) {
+      context.log.warn('[generate-plan] model call failed: ' + e.message);
+    }
 
-    // Normalize: exactly one Home (first), dedupe slugs, cap at 6.
-    let pages = tool.input.pages.filter((p) => p && p.slug && p.title);
+    // Never collapse to one page: if the model didn't return a usable sitemap,
+    // build a sensible one from the brief so generation is always multi-page.
+    let pages = modelPages.length ? modelPages : fallbackPlan(content);
     const homeIdx = pages.findIndex((p) => isHome(p.slug));
     if (homeIdx > 0) pages.unshift(pages.splice(homeIdx, 1)[0]);
     if (homeIdx === -1) pages.unshift({ slug: 'home', title: 'Home', purpose: 'Introduce the organization and drive the primary goal.', sections: [] });
