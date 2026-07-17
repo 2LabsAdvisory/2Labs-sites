@@ -113,4 +113,13 @@ async function upsertSite(email, input) {
   return site;
 }
 
-module.exports = { listSites, getSite, upsertSite, slugify };
+/** Remove a site from the user's registry. Returns { removed }. */
+async function deleteSite(email, slug) {
+  const sites = await listSites(email);
+  const next = sites.filter((s) => s.slug !== slug);
+  if (next.length === sites.length) return { removed: false };
+  await writeSites(email, next);
+  return { removed: true };
+}
+
+module.exports = { listSites, getSite, upsertSite, deleteSite, slugify };

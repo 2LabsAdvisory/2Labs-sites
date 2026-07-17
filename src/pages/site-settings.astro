@@ -61,6 +61,19 @@
   .voice-tags{ display:flex; gap:8px; flex-wrap:wrap; }
   .voice-tag{ background:var(--amber-tint-strong); color:var(--amber-dark); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; border:1px solid #F3E3B8; }
   .a11y-note{ display:flex; align-items:center; gap:7px; margin-top:14px; font-size:11.5px; color:var(--green); background:var(--green-bg); padding:8px 12px; border-radius:8px; max-width:max-content; }
+  .card.danger{ border-color:#EBC9C4; }
+  .card.danger h2{ color:#C0392B; }
+  .btn-danger{ background:#C0392B; color:#fff; border:none; border-radius:10px; padding:11px 18px; font-weight:600; font-size:14px; cursor:pointer; }
+  .btn-danger:hover{ background:#a5311f; } .btn-danger:disabled{ opacity:.45; cursor:not-allowed; }
+  .modal-overlay{ position:fixed; inset:0; background:rgba(31,36,46,0.5); display:none; align-items:center; justify-content:center; padding:24px; z-index:60; }
+  .modal-overlay.open{ display:flex; }
+  .modal{ width:100%; max-width:440px; background:var(--surface); border-radius:16px; box-shadow:0 24px 60px rgba(15,23,42,.3); padding:24px; }
+  .modal h3{ margin:0 0 6px; font-size:18px; color:#C0392B; }
+  .modal p{ margin:0 0 16px; font-size:13.5px; color:var(--ink-soft); line-height:1.5; }
+  .modal input{ width:100%; border:1px solid var(--border); border-radius:10px; padding:11px 13px; font-family:'Inter',sans-serif; font-size:14px; background:var(--bg); }
+  .modal input:focus{ outline:none; border-color:#C0392B; }
+  .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  .modal-actions .cancel{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 16px; font-weight:600; font-size:13px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -111,6 +124,24 @@
   <div class="actions">
     <span class="saved" id="saved">Saved ✓</span>
     <button class="btn-primary" id="saveBtn">Save settings</button>
+  </div>
+
+  <div class="card danger">
+    <h2>Danger zone</h2>
+    <p class="card-sub">Permanently delete this site and all of its draft content. This cannot be undone.</p>
+    <button class="btn-danger" id="deleteBtn">Delete this site</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <h3>Delete this site?</h3>
+    <p>This permanently removes <b id="dmName">this site</b> and its unpublished drafts. This can’t be undone. Type the site name to confirm:</p>
+    <input id="dmConfirm" placeholder="Site name" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="cancel" id="dmCancel">Cancel</button>
+      <button class="btn-danger" id="dmDelete" disabled>Delete site</button>
+    </div>
   </div>
 </div>
 
@@ -190,6 +221,27 @@
       if (res.ok) { const s = $('saved'); s.classList.add('show'); setTimeout(() => s.classList.remove('show'), 1800); }
     } catch (e) {}
     btn.disabled = false; btn.textContent = 'Save settings';
+  });
+
+  // Delete flow — type the site name to confirm.
+  const dm = $('deleteModal');
+  const wantName = () => ($('siteName').textContent || slug || '').trim().toLowerCase();
+  $('deleteBtn').addEventListener('click', () => {
+    $('dmName').textContent = $('siteName').textContent || slug;
+    $('dmConfirm').value = ''; $('dmDelete').disabled = true;
+    dm.classList.add('open'); $('dmConfirm').focus();
+  });
+  $('dmCancel').addEventListener('click', () => dm.classList.remove('open'));
+  dm.addEventListener('click', (e) => { if (e.target === dm) dm.classList.remove('open'); });
+  $('dmConfirm').addEventListener('input', () => { $('dmDelete').disabled = $('dmConfirm').value.trim().toLowerCase() !== wantName(); });
+  $('dmDelete').addEventListener('click', async () => {
+    const btn = $('dmDelete'); btn.disabled = true; btn.textContent = 'Deleting…';
+    try {
+      const res = await apiFetch('/api/delete-site', { method: 'POST', body: JSON.stringify({ site: slug }) });
+      if (res.status === 401) { signOut(); return; }
+      if (res.ok) { location.href = '/dashboard'; return; }
+      btn.textContent = 'Delete site'; btn.disabled = false;
+    } catch (e) { btn.textContent = 'Delete site'; btn.disabled = false; }
   });
 
   load();
