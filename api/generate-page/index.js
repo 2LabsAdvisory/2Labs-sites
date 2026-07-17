@@ -11,6 +11,7 @@ const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../sha
 const { getSite } = require('../lib/siteRegistry');
 const { setDraftFile } = require('../lib/draftStore');
 const { brandSummary, routeFor, pageFileFor } = require('../lib/studio');
+const { fetchStockImages } = require('../lib/images');
 
 const PAGE_TOOL = {
   name: 'submit_page',
@@ -44,16 +45,34 @@ module.exports = async function (context, req) {
     const nav = pages.map((p) => `- ${p.title} → ${routeFor(p.slug)}`).join('\n');
     const sections = (page.sections || []).map((s, i) => `${i + 1}. ${s.heading} — ${s.intent}`).join('\n') || '(design suitable sections for this page)';
 
+    // Topical photography (if an Unsplash key is configured).
+    const imgQuery = [(content.offers || [])[0], content.org_name, page.title].filter(Boolean).join(' ').slice(0, 80) || orgName;
+    const images = await fetchStockImages(imgQuery, 5);
+
     const system = [
-      'You are a senior web designer, developer, and content strategist building ONE page of a world-class Astro site.',
+      'You are an award-winning art director and senior front-end engineer at a top-tier studio (calibre of Pentagram, Locomotive, Active Theory, Instrument). Build ONE page of a site that looks like it cost hundreds of thousands of dollars — modern, creative, editorial, unmistakably premium. Never generic, never a template.',
+      '',
+      'DESIGN BAR (this is the point — do NOT ship something ordinary):',
+      '- Bold, confident hierarchy: oversized display headings, dramatic scale contrast, and generous, luxurious whitespace. Big type is your friend.',
+      '- Distinctive, characterful layouts. Vary the rhythm across the page: a striking full-bleed hero, split/asymmetric layouts, overlapping/floating cards, a stat or logo band, a feature grid, an editorial content block, a testimonial or quote, and a strong closing CTA. No "centered hero + three plain cards" clichés.',
+      '- Rich visual depth: layered gradients and soft mesh backgrounds built from the brand colours, subtle noise/blur, elegant thin borders, refined shadows, rounded corners, and decorative inline-SVG shapes/blobs. Use tasteful inline-SVG icons (never emoji as icons).',
+      '- Motion & polish: premium micro-interactions — smooth hover states, gentle reveal-on-scroll or entrance animations via CSS @keyframes + animation, transforms and transitions. ALWAYS wrap non-trivial motion in @media (prefers-reduced-motion: no-preference).',
+      '- Typography: use the brand fonts with a strong modular scale, tuned letter-spacing/line-height, and occasional accent treatment (a highlighted word, an underline flourish in the brand colour).',
+      '- Responsive and flawless at mobile / tablet / desktop; use CSS grid/flex, clamp() for fluid type, and aspect-ratio boxes so nothing shifts.',
+      '',
+      'IMAGERY:',
+      images.length
+        ? '- Real photographs are provided below. USE THEM prominently — a full-bleed hero image and imagery in key sections. Always layer a brand-tinted gradient overlay over photos for mood and text legibility, use object-fit:cover inside aspect-ratio containers, add rounded corners/masks where fitting, and write descriptive alt text. Use the exact URLs; do not alter them.'
+        : '- No photos are available, so create striking gradient/mesh/SVG art instead — full-bleed gradient heroes, abstract shapes, pattern fills. Never output a broken <img> or an empty grey box.',
+      '',
       'HARD REQUIREMENTS:',
       '- Return the COMPLETE .astro file. It MUST `import BaseLayout from "../layouts/BaseLayout.astro";` and wrap the page in <BaseLayout title="…" description="…" orgName={…} primaryCta={…}> … </BaseLayout>.',
-      '- Pass a unique, specific SEO title and a ≤155-char meta description via those props. Use exactly one <h1>. Logical heading order.',
-      '- Use ONLY the design tokens listed below for colours and fonts (scoped <style> is fine). NEVER invent CSS variable names, NEVER declare your own :root variables, NEVER hardcode off-brand colours. Every section MUST set an explicit background and a readable, contrasting text colour — white-on-white or dark-on-dark is a failure. The brand colour must be clearly visible (buttons, links, a bold band, highlights).',
-      '- Real, on-voice copy that moves the reader toward the page’s primary action. No lorem ipsum, no placeholder text.',
-      '- Do NOT use <img> with invented external URLs. Use styled sections, colour blocks, gradients, icons (emoji/inline SVG) instead.',
-      '- Accessible: semantic landmarks, sufficient contrast (tokens already pass AA), descriptive link text, labelled controls.',
-      '- Internal links must use the exact routes from the sitemap. Keep the page self-contained (no extra imports/components).',
+      '- Unique, specific SEO title + ≤155-char meta description via those props. Exactly one <h1>; logical heading order.',
+      '- Use ONLY the design tokens listed below for colours/fonts (scoped <style> is fine). NEVER invent CSS variable names, NEVER declare your own :root, NEVER hardcode off-brand colours. Every section sets an explicit background and a readable contrasting text colour (use the *-contrast tokens on colour bands). White-on-white / dark-on-dark is a failure.',
+      '- Real, on-voice copy that moves the reader toward the primary action. No lorem ipsum.',
+      '- Accessible: semantic landmarks, AA contrast, descriptive links, labelled controls, alt text.',
+      '- Internal links use the exact routes from the sitemap. Self-contained (no extra imports/components).',
+      '- Anti-slop: never default Inter-on-white blandness, never generic purple gradients, never symmetrical cookie-cutter blocks. Make deliberate, art-directed choices with real personality.',
       'Return via submit_page only.',
     ].join('\n');
 
@@ -66,18 +85,20 @@ module.exports = async function (context, req) {
       `Primary goal / CTA: ${primaryCta}`,
       `Pass to BaseLayout: orgName={${JSON.stringify(orgName)}} primaryCta={${JSON.stringify(primaryCta)}}.`,
       '',
+      images.length ? 'PHOTOGRAPHS TO USE (exact URLs — embed with brand-tinted overlays + alt text):\n' + images.map((im, i) => `${i + 1}. ${im.url}\n   alt: ${im.alt}`).join('\n') : 'No photographs available — use gradient/SVG art.',
+      '',
       `Build this page — "${page.title}" (route ${routeFor(page.slug)}). Purpose: ${page.purpose}`,
       'Sections:',
       sections,
       '',
       'Sitemap (use these routes for any internal links):',
       nav,
-      brief.mode === 'import' ? '\nThis is a redesign — keep it faithful to the organization; preserve real facts, never invent specifics like hours/prices.' : '\nNew site — write credible best-practice copy; mark any invented specific with [confirm].',
+      brief.mode === 'import' ? '\nThis is a redesign — faithful to the organization; preserve real facts, never invent specifics like hours/prices.' : '\nNew site — credible best-practice copy; mark any invented specific with [confirm].',
     ].join('\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-5', max_tokens: 8000, thinking: { type: 'disabled' },
+      model: 'claude-sonnet-5', max_tokens: 12000, thinking: { type: 'disabled' },
       system, tools: [PAGE_TOOL], tool_choice: { type: 'tool', name: 'submit_page' },
       messages: [{ role: 'user', content: user }],
     });
