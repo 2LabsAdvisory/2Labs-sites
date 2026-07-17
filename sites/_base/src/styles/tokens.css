@@ -1,0 +1,27 @@
+/*
+  Shared base render skeleton (sites/_base) — the render root for any site that
+  doesn't yet have its own sites/<slug>/ project. Per-site brand is applied by
+  OVERLAYING this file as a draft (the seed writes real hex values from the
+  Wizard Brief). These defaults render a neutral, on-brand-looking starter.
+*/
+:root {
+  --bg: #F8F7F6;
+  --surface: #FFFFFF;
+  --ink: #1F242E;
+  --ink-soft: #676F7E;
+  --border: #E5E0DC;
+  --primary: #2F5DA8;
+  --primary-dark: #244a86;
+  --primary-tint-strong: #EEF3FA;
+  --on-primary: #FFFFFF;
+  --success: #2F8558;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06);
+  --font-heading: 'Plus Jakarta Sans', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; }
+a { color: inherit; }
+main { min-height: 40vh; }

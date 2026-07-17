@@ -59,8 +59,13 @@ async function renderDraft(primaryRelPath, primaryContent, overlayFiles = {}, si
     },
     load(id) {
       const abs = stripQuery(id);
-      // Only serve the bare module; Astro derives ?astro&type=style/script from it.
-      return id === abs && overlay.has(abs) ? overlay.get(abs) : null;
+      if (!overlay.has(abs)) return null;
+      // .astro: serve only the bare module — Astro derives ?astro&type=style/script
+      // sub-modules from it itself. For .css (and other assets), serve the overlaid
+      // content for query variants too (e.g. tokens.css?direct), so an overlaid
+      // stylesheet's contents are what get collected, not the on-disk file.
+      if (abs.endsWith('.astro')) return id === abs ? overlay.get(abs) : null;
+      return overlay.get(abs);
     },
   };
 

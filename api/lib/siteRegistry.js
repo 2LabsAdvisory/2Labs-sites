@@ -94,6 +94,7 @@ async function upsertSite(email, input) {
       domain: input.domain ?? existing.domain,
       github: { ...existing.github, ...(input.github || {}) },
       ...(input.brief ? { brief: input.brief } : {}), // wizard brief (Studio input)
+      ...(typeof input.editable === 'boolean' ? { editable: input.editable } : {}),
     });
     await writeSites(email, sites);
     return existing;

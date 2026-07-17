@@ -53,6 +53,18 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
     assert.match(html, /addEventListener\(\s*["']click["']/, 'the accordion JS should be inlined so it runs');
   });
 
+  // 4. A brand-new site (slug with no on-disk project) renders against the
+  //    shared _base skeleton, and its overlaid tokens.css brand colors are
+  //    applied — this is what makes wizard-created sites editable.
+  await check('renders a new site via _base with overlaid brand tokens', async () => {
+    const home = `---\nimport BaseLayout from '../layouts/BaseLayout.astro';\n---\n` +
+      `<BaseLayout title="Home" orgName="Acme"><h1>Welcome to Acme</h1></BaseLayout>`;
+    const tokens = ':root{ --bg:#fff; --ink:#111; --ink-soft:#555; --border:#ddd; --primary:#E86A2C; --primary-dark:#c55; --on-primary:#ffffff; --font-heading:sans-serif; --font-body:sans-serif; }';
+    const html = await renderDraft('src/pages/index.astro', home, { 'src/styles/tokens.css': tokens }, 'nonexistent-slug-xyz');
+    assert.match(html, /Welcome to Acme/, 'new-site home renders via _base');
+    assert.match(html, /#E86A2C/, 'overlaid tokens.css brand color should be collected');
+  });
+
   console.log(`\n${passed} passed`);
   await closeRenderer();
 })().catch(async (e) => { console.error(e); await closeRenderer(); process.exit(1); });

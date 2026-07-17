@@ -539,7 +539,11 @@
     try {
       const res = await apiFetch('/api/save-site', { method:'POST', body: JSON.stringify({ name, domain, brief }) });
       const data = await res.json().catch(()=>({}));
-      if (data.status==='ok' && data.site) createdSlug = data.site.slug;
+      if (data.status==='ok' && data.site) {
+        createdSlug = data.site.slug;
+        // Seed an editable starter (tokens + home) from the brief.
+        try { await apiFetch('/api/seed-site', { method:'POST', body: JSON.stringify({ site: createdSlug }) }); } catch(e) {}
+      }
     } catch(e) { /* the editor link falls back to the dashboard */ }
   }
 
@@ -559,9 +563,10 @@
     buildTimers.push(setTimeout(()=>{
       document.getElementById('buildHead').style.display='none';
       document.getElementById('teamList').style.display='none';
-      // New sites have nothing to edit until the Studio (Part B) generates them;
-      // route to the dashboard where the new site now appears as a card.
-      document.getElementById('openEditorBtn').href = '/dashboard';
+      // The site is seeded + editable — open it straight in the editor.
+      const link = document.getElementById('openEditorBtn');
+      link.href = createdSlug ? ('/editor?site=' + encodeURIComponent(createdSlug)) : '/dashboard';
+      link.textContent = createdSlug ? 'Open in Editor →' : 'Go to your sites →';
       document.getElementById('buildDone').style.display='block';
     }, 1600+rows.length*1100+700));
   }

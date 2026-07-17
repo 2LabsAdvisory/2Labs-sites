@@ -1,0 +1,22 @@
+---
+interface Props { orgName: string; primaryCta?: string; }
+const { orgName, primaryCta = 'Get in touch' } = Astro.props;
+---
+<header class="site-header">
+  <div class="hdr-inner">
+    <a href="/" class="brand">{orgName}</a>
+    <nav aria-label="Primary"><a href="/">Home</a></nav>
+    <a href="/contact" class="cta">{primaryCta}</a>
+  </div>
+</header>
+<style>
+  .site-header { border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 10; }
+  .hdr-inner { max-width: 1120px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .brand { font-family: var(--font-heading); font-weight: 800; font-size: 18px; color: var(--ink); text-decoration: none; }
+  nav { display: flex; gap: 20px; }
+  nav a { font-size: 14px; color: var(--ink-soft); text-decoration: none; font-weight: 500; }
+  nav a:hover { color: var(--ink); }
+  .cta { background: var(--primary); color: var(--on-primary); font-weight: 600; font-size: 14px; padding: 10px 18px; border-radius: 10px; text-decoration: none; white-space: nowrap; }
+  .cta:hover { background: var(--primary-dark); }
+  @media (max-width: 640px) { nav { display: none; } }
+</style>

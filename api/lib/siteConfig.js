@@ -11,11 +11,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULT_SITE = '2labs';
+const BASE_SITE = '_base'; // shared render skeleton for sites without their own project
 
-function siteRoot(siteId = DEFAULT_SITE) {
+// A site's project dir (bundled or repo), or null if it has no astro.config.
+function resolveSiteDir(siteId) {
   const bundled = path.resolve(__dirname, '..', '_site', 'sites', siteId);
   if (fs.existsSync(path.join(bundled, 'astro.config.mjs'))) return bundled;
-  return path.resolve(__dirname, '..', '..', 'sites', siteId); // repo (local dev)
+  const repo = path.resolve(__dirname, '..', '..', 'sites', siteId);
+  if (fs.existsSync(path.join(repo, 'astro.config.mjs'))) return repo;
+  return null;
+}
+
+// Render/edit root for a site: its own project if it exists, else the shared
+// base skeleton (new wizard sites have no on-disk project — their pages/brand
+// live in draft overlays rendered against _base).
+function siteRoot(siteId = DEFAULT_SITE) {
+  return resolveSiteDir(siteId) || resolveSiteDir(BASE_SITE)
+    || path.resolve(__dirname, '..', '..', 'sites', BASE_SITE);
 }
 
 function readJson(rel, siteId) {
