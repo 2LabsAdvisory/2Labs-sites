@@ -93,6 +93,7 @@ async function upsertSite(email, input) {
       name: input.name ?? existing.name,
       domain: input.domain ?? existing.domain,
       github: { ...existing.github, ...(input.github || {}) },
+      ...(input.brief ? { brief: input.brief } : {}), // wizard brief (Studio input)
     });
     await writeSites(email, sites);
     return existing;
@@ -103,6 +104,7 @@ async function upsertSite(email, input) {
     domain: input.domain || '',
     editable: false, // a new site becomes editable once its repo/project is connected
     github: { owner: '', repo: '', branch: 'main', ...(input.github || {}) },
+    ...(input.brief ? { brief: input.brief } : {}), // wizard brief the Studio will build from
     createdAt: new Date().toISOString(),
   };
   sites.push(site);

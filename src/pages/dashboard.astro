@@ -235,7 +235,7 @@ import brand from '../../site-config/brand.json';
 
   // New-site modal
   const modal = document.getElementById('newSiteModal');
-  document.getElementById('newSiteBtn').addEventListener('click', () => modal.classList.add('open'));
+  document.getElementById('newSiteBtn').addEventListener('click', () => { location.href = '/new-site'; });
   document.getElementById('nsCancel').addEventListener('click', () => modal.classList.remove('open'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
   document.getElementById('nsCreate').addEventListener('click', async () => {

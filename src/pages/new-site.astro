@@ -1,0 +1,546 @@
+---
+// new-site.astro — the New Site Wizard (Build Brief Part A). 5 steps, two modes
+// (import an existing site / start blank). Assembles the "Wizard Brief" the AI
+// Studio will consume (Part B), creates the site record on completion, and hands
+// off to the editor. Faithful to client_onboarding mockup.
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
+<title>New site — 2Labs Sites</title>
+<link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style is:global>
+  :root{
+    --amber:#F59F0A; --amber-dark:#D9870A; --amber-tint:rgba(245,159,10,0.08); --amber-tint-strong:#FFFBEB;
+    --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#FFFFFF; --border:#E5E0DC;
+    --green:#2F8558; --green-bg:#EAF6EF; --violet:#6D5AE0; --violet-bg:#F1EFFC;
+    --radius:16px; --shadow:0 1px 2px rgba(31,36,46,0.04), 0 10px 28px rgba(31,36,46,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; display:flex; flex-direction:column; }
+  h1,h2,h3,h4,.display{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+
+  .topbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 24px; border-bottom:1px solid var(--border); background:var(--surface); }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-mark{ width:30px;height:30px;border-radius:50%; overflow:hidden; }
+  .brand-mark img{ width:100%;height:100%; object-fit:cover; display:block; }
+  .brand-name{ font-weight:700; font-size:15px; }
+  .org-pill{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); padding:5px 13px 5px 5px; border-radius:100px; font-size:12.5px; font-weight:500; }
+  .org-avatar{ width:24px;height:24px;border-radius:50%; background:var(--amber); display:flex;align-items:center;justify-content:center; color:var(--ink);font-size:10.5px;font-weight:700; }
+  .close-x{ color:var(--ink-soft); font-size:20px; cursor:pointer; text-decoration:none; }
+
+  .wrap{ flex:1; display:flex; flex-direction:column; align-items:center; padding:34px 20px 70px; }
+
+  .stepper{ display:flex; align-items:center; gap:6px; margin-bottom:34px; max-width:720px; width:100%; }
+  .step{ display:flex; align-items:center; gap:8px; }
+  .step.grow{ flex:1; }
+  .step-dot{ width:27px;height:27px;border-radius:50%; flex-shrink:0; display:flex;align-items:center;justify-content:center; font-size:11.5px; font-weight:700; font-family:'Plus Jakarta Sans',sans-serif; background:var(--surface); border:1.5px solid var(--border); color:var(--ink-soft); transition:.2s; }
+  .step-label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); white-space:nowrap; display:none; }
+  .step-line{ flex:1; height:1.5px; background:var(--border); min-width:14px; }
+  .step.done .step-dot{ background:var(--ink); border-color:var(--ink); color:var(--amber); }
+  .step.active .step-dot{ background:var(--amber); border-color:var(--amber); color:var(--ink); }
+  .step.active .step-label{ display:block; color:var(--ink); }
+  @media(min-width:720px){ .step-label{ display:block; } }
+
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); width:100%; max-width:600px; padding:36px; }
+  .card.wide{ max-width:660px; }
+  .eyebrow{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--amber-dark); margin-bottom:8px; }
+  .card h2{ font-size:23px; margin:0 0 8px; }
+  .card > p.sub{ font-size:13.5px; color:var(--ink-soft); margin:0 0 24px; line-height:1.5; }
+
+  .field{ margin-bottom:18px; }
+  .field label{ display:block; font-size:12.5px; font-weight:600; margin-bottom:6px; }
+  .field .req{ color:var(--amber-dark); }
+  .field input[type=text], .field textarea{ width:100%; border:1px solid var(--border); border-radius:10px; padding:11px 13px; font-family:'Inter',sans-serif; font-size:13.5px; color:var(--ink); background:var(--bg); }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--amber); background:#fff; }
+  .field textarea{ resize:vertical; min-height:82px; line-height:1.5; }
+  .field-hint{ font-size:11.5px; color:var(--ink-soft); margin-top:5px; }
+  .url-row{ display:flex; gap:8px; } .url-row input{ flex:1; }
+
+  .btn{ border:none; border-radius:10px; padding:12px 20px; font-family:'Inter',sans-serif; font-weight:600; font-size:13.5px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; text-decoration:none; }
+  .btn-primary{ background:var(--amber); color:var(--ink); }
+  .btn-primary:hover{ background:var(--amber-dark); }
+  .btn-primary:disabled{ opacity:.45; cursor:not-allowed; }
+  .btn-ghost{ background:transparent; color:var(--ink-soft); border:1px solid var(--border); }
+  .btn-ghost:hover{ color:var(--ink); }
+  .btn-lg{ padding:14px 26px; font-size:14.5px; }
+  .card-actions{ display:flex; justify-content:space-between; align-items:center; margin-top:26px; }
+
+  .choice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:22px; }
+  .choice{ border:1.5px solid var(--border); border-radius:14px; padding:20px; cursor:pointer; transition:.15s; background:var(--surface); position:relative; }
+  .choice:hover{ border-color:var(--amber); box-shadow:var(--shadow); }
+  .choice.selected{ border-color:var(--amber); background:var(--amber-tint-strong); }
+  .choice-ico{ width:40px;height:40px;border-radius:11px; background:var(--amber-tint-strong); display:flex;align-items:center;justify-content:center; font-size:20px; margin-bottom:12px; }
+  .choice h4{ margin:0 0 5px; font-size:15px; }
+  .choice p{ margin:0; font-size:12.5px; color:var(--ink-soft); line-height:1.45; }
+  .choice-tag{ position:absolute; top:14px; right:14px; font-size:10px; font-weight:700; color:var(--amber-dark); background:#fff; border:1px solid #F3E3B8; padding:3px 8px; border-radius:100px; }
+
+  .import-panel{ border:1px solid var(--border); border-radius:12px; padding:18px; background:var(--bg); margin-bottom:6px; }
+  .import-panel.hidden{ display:none; }
+  .import-visual{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:16px; }
+  .import-visual .old-site, .import-visual .new-site{ width:96px; height:60px; border-radius:8px; background:#fff; border:1px solid var(--border); position:relative; overflow:hidden; }
+  .import-visual .old-site::before{ content:""; position:absolute; top:0; left:0; right:0; height:12px; background:#EFEDEA; }
+  .import-visual .old-site::after{ content:""; position:absolute; top:20px; left:9px; right:9px; height:7px; background:#DEDAD3; border-radius:3px; }
+  .import-visual .new-site{ border-color:var(--amber); }
+  .import-visual .new-site::before{ content:""; position:absolute; top:0; left:0; right:0; height:12px; background:var(--amber-tint-strong); }
+  .import-visual .new-site::after{ content:""; position:absolute; top:20px; left:9px; right:9px; height:7px; background:var(--amber); opacity:.6; border-radius:3px; }
+  .import-visual .arrow{ font-size:18px; color:var(--amber-dark); }
+
+  .ai-callout{ display:flex; gap:12px; align-items:flex-start; background:var(--violet-bg); border:1px solid #E1DCF7; border-radius:12px; padding:14px 16px; margin-bottom:22px; }
+  .ai-avatar{ width:32px;height:32px;border-radius:9px; flex-shrink:0; background:linear-gradient(135deg,#7C6BEA,#5A47C8); color:#fff; display:flex;align-items:center;justify-content:center; font-size:16px; }
+  .ai-callout .ai-name{ font-size:11px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px; }
+  .ai-callout p{ margin:0; font-size:12.5px; color:var(--ink); line-height:1.5; }
+  .ai-badge{ display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:700; color:var(--violet); background:#fff; border:1px solid #E1DCF7; padding:2px 7px; border-radius:100px; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
+  .found-banner{ display:flex; align-items:center; gap:8px; background:var(--green-bg); color:var(--green); font-size:12.5px; font-weight:600; padding:9px 13px; border-radius:9px; margin-bottom:20px; }
+
+  .review-block{ border:1px solid var(--border); border-radius:12px; padding:16px 16px 18px; margin-bottom:14px; }
+  .review-block-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .review-block-head h4{ margin:0; font-size:13px; display:flex; align-items:center; gap:8px; }
+  .block-note{ font-size:11.5px; color:var(--ink-soft); margin:0 0 14px; line-height:1.45; }
+  .edit-link{ font-size:11.5px; color:var(--amber-dark); font-weight:600; cursor:pointer; }
+
+  .color-group{ margin-bottom:14px; } .color-group:last-child{ margin-bottom:0; }
+  .color-group-label{ font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; margin-bottom:9px; display:flex; align-items:center; gap:7px; }
+  .swatch-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .swatch{ text-align:center; width:60px; }
+  .swatch-color{ width:100%; height:46px; border-radius:10px; border:1px solid rgba(0,0,0,0.08); margin-bottom:5px; padding:0; cursor:pointer; -webkit-appearance:none; appearance:none; }
+  .swatch-color::-webkit-color-swatch-wrapper{ padding:0; }
+  .swatch-color::-webkit-color-swatch{ border:none; border-radius:9px; }
+  .swatch-hex{ width:100%; border:none; background:transparent; text-align:center; font-size:9.5px; color:var(--ink-soft); font-family:'IBM Plex Mono',monospace; padding:2px 0; text-transform:uppercase; }
+  .swatch-hex:focus{ outline:none; color:var(--ink); background:var(--amber-tint-strong); border-radius:5px; }
+  .swatch-name{ font-size:9.5px; color:var(--ink); font-weight:600; margin-top:1px; }
+  .swatch.rec .swatch-color{ box-shadow:0 0 0 2px #fff, 0 0 0 3.5px var(--violet); }
+  .a11y-note{ display:flex; align-items:center; gap:7px; margin-top:14px; font-size:11px; color:var(--green); background:var(--green-bg); padding:7px 11px; border-radius:8px; }
+
+  .font-row{ display:flex; gap:26px; flex-wrap:wrap; }
+  .font-sample b{ display:block; font-size:16px; color:var(--ink); margin-bottom:2px; }
+  .font-sample .fs-head{ font-family:'Plus Jakarta Sans',sans-serif; }
+  .font-sample .fs-body{ font-family:'Inter',sans-serif; }
+  .font-sample span{ font-size:11.5px; color:var(--ink-soft); }
+
+  .logo-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .logo-thumb{ width:44px; height:44px; border-radius:9px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); overflow:hidden; }
+  .logo-thumb.light{ background:#F6EDE1; } .logo-thumb.dark{ background:var(--ink); }
+  .logo-thumb img{ width:30px;height:30px; object-fit:cover; border-radius:50%; }
+  .logo-caption{ font-size:11px; color:var(--ink-soft); text-align:center; margin-top:4px; }
+  .logo-item{ text-align:center; }
+
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .chip{ background:var(--amber-tint-strong); color:var(--amber-dark); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; border:1px solid #F3E3B8; outline:none; }
+  .chip[contenteditable]:focus{ background:#fff; border-color:var(--amber); color:var(--ink); }
+  .chip.goal-sel{ background:var(--ink); color:var(--amber); border-color:var(--ink); }
+  .chip.add{ cursor:pointer; background:#fff; color:var(--ink-soft); border-style:dashed; }
+  .chip.goal{ cursor:pointer; }
+
+  .summary-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+  .summary-card{ border:1px solid var(--border); border-radius:12px; padding:14px 15px; }
+  .summary-card h5{ margin:0 0 9px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); font-family:'Inter',sans-serif; font-weight:700; }
+  .summary-swatches{ display:flex; gap:5px; margin-bottom:8px; }
+  .summary-swatches i{ width:20px;height:20px;border-radius:6px; display:inline-block; border:1px solid rgba(0,0,0,.08); }
+  .summary-line{ font-size:12px; color:var(--ink); margin:3px 0; }
+  .summary-line span{ color:var(--ink-soft); }
+  .summary-card .edit-link{ margin-top:8px; display:inline-block; }
+
+  .build-promise{ border:1px solid var(--border); border-radius:12px; padding:6px 16px; margin-bottom:20px; }
+  .promise{ display:flex; gap:11px; padding:11px 0; align-items:flex-start; }
+  .promise + .promise{ border-top:1px solid var(--border); }
+  .promise-ico{ width:22px;height:22px;border-radius:6px; background:var(--green-bg); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; margin-top:1px; }
+  .promise-txt{ font-size:12.5px; } .promise-txt b{ font-weight:600; }
+  .promise-txt span{ display:block; color:var(--ink-soft); font-size:11.5px; margin-top:1px; }
+
+  .confirm-box{ display:flex; gap:11px; align-items:flex-start; padding:14px 16px; background:var(--amber-tint-strong); border:1px solid #F3E3B8; border-radius:12px; cursor:pointer; }
+  .confirm-box input{ margin-top:2px; width:16px; height:16px; accent-color:var(--amber-dark); flex-shrink:0; }
+  .confirm-box label{ font-size:12.5px; line-height:1.5; cursor:pointer; }
+  .confirm-box b{ font-weight:600; }
+
+  .center{ text-align:center; }
+  .build-head h2{ font-size:22px; margin:2px 0 6px; }
+  .team-list{ margin:22px 0 6px; text-align:left; }
+  .team-row{ display:flex; gap:13px; align-items:flex-start; padding:14px 0; }
+  .team-row + .team-row{ border-top:1px solid var(--border); }
+  .team-ico{ width:38px;height:38px;border-radius:10px; flex-shrink:0; display:flex;align-items:center;justify-content:center; font-size:18px; background:var(--bg); border:1px solid var(--border); }
+  .team-main{ flex:1; }
+  .team-role{ font-size:13px; font-weight:700; font-family:'Plus Jakarta Sans',sans-serif; margin-bottom:2px; }
+  .team-task{ font-size:12px; color:var(--ink-soft); }
+  .team-status{ flex-shrink:0; display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:var(--ink-soft); }
+  .spinner{ width:14px;height:14px;border-radius:50%; border:2px solid var(--border); border-top-color:var(--amber); animation:spin .8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .team-row.done .team-status{ color:var(--green); }
+  .team-row.done .team-ico{ background:var(--green-bg); border-color:#CFE9D8; }
+  .team-row.waiting{ opacity:.5; }
+  .check{ color:var(--green); font-weight:700; }
+
+  .done-icon{ width:58px; height:58px; border-radius:50%; background:var(--green-bg); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 16px; }
+  .saved-note{ display:inline-flex; align-items:center; gap:7px; margin:16px auto 6px; font-size:12px; color:var(--violet); background:var(--violet-bg); padding:8px 14px; border-radius:100px; }
+  .done-actions{ display:flex; gap:10px; justify-content:center; margin-top:22px; }
+
+  .step-panel{ display:none; } .step-panel.active{ display:block; }
+</style>
+</head>
+<body data-mode="import">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><img src="/logo.png" alt="2Labs" width="30" height="30" /></div>
+      <div class="brand-name">2Labs Sites</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div class="org-pill"><div class="org-avatar" id="orgAvatar">2L</div> <span id="orgPillName">New site</span></div>
+      <a class="close-x" href="/dashboard" title="Cancel">✕</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="stepper" id="stepper">
+      <div class="step grow" data-step="1"><div class="step-dot">1</div><div class="step-label">Start</div><div class="step-line"></div></div>
+      <div class="step grow" data-step="2"><div class="step-dot">2</div><div class="step-label">Brand</div><div class="step-line"></div></div>
+      <div class="step grow" data-step="3"><div class="step-dot">3</div><div class="step-label">Content</div><div class="step-line"></div></div>
+      <div class="step grow" data-step="4"><div class="step-dot">4</div><div class="step-label">Review</div><div class="step-line"></div></div>
+      <div class="step" data-step="5"><div class="step-dot">5</div><div class="step-label">Build</div></div>
+    </div>
+
+    <div class="card wide">
+      <!-- STEP 1 : START -->
+      <div class="step-panel active" data-panel="1">
+        <div class="eyebrow">Step 1 of 5</div>
+        <h2>Let's create your new site</h2>
+        <p class="sub">Start from an existing website and we'll carry everything over, or start from a blank canvas and we'll build it with you.</p>
+        <div class="choice-grid">
+          <div class="choice selected" id="choiceImport" onclick="setMode('import')">
+            <div class="choice-tag">Recommended</div>
+            <div class="choice-ico">🌐</div>
+            <h4>Import an existing site</h4>
+            <p>We'll pull in your pages, brand, and content — then redesign and rewrite it.</p>
+          </div>
+          <div class="choice" id="choiceBlank" onclick="setMode('blank')">
+            <div class="choice-ico">✨</div>
+            <h4>Start from blank</h4>
+            <p>No site yet? Tell us about your organization and we'll build it from best practices.</p>
+          </div>
+        </div>
+        <div class="import-panel" id="importPanel">
+          <div class="import-visual"><div class="old-site"></div><div class="arrow">→</div><div class="new-site"></div></div>
+          <div class="field" style="margin-bottom:0;">
+            <label>Current website URL</label>
+            <div class="url-row">
+              <input type="text" id="urlInput" placeholder="e.g. riversideyouth.ca" />
+              <button class="btn btn-primary" onclick="goTo(2)">Import &amp; continue →</button>
+            </div>
+            <div class="field-hint">We'll scan your site to extract brand, pages, and content.</div>
+          </div>
+        </div>
+        <div class="import-panel hidden" id="blankPanel">
+          <p style="margin:0 0 14px; font-size:13px; color:var(--ink-soft); line-height:1.5;">No problem — you'll tell us your organization's mission, what you offer, and your main goal on the next steps, and our AI brand designer will propose a starting look you can shape.</p>
+          <button class="btn btn-primary" onclick="goTo(2)">Start from blank →</button>
+        </div>
+      </div>
+
+      <!-- STEP 2 : BRAND -->
+      <div class="step-panel" data-panel="2">
+        <div class="eyebrow">Step 2 of 5</div>
+        <h2 class="if-import" style="display:none;">Here's your brand — refined</h2>
+        <h2 class="if-blank" style="display:none;">Let's shape your brand</h2>
+        <p class="sub if-import" style="display:none;">We extracted your brand, then our AI brand designer refined it into a complete system. Confirm or edit anything — click a color to change it.</p>
+        <p class="sub if-blank" style="display:none;">You don't have a site yet, so our AI brand designer created a clean starter system. Make it yours — click any color to change it, or edit the fonts and logo.</p>
+        <div class="found-banner if-import" id="foundBanner" style="display:none;">✓ Scanned your site for brand colors, fonts &amp; logo</div>
+        <div class="ai-callout">
+          <div class="ai-avatar">◈</div>
+          <div>
+            <div class="ai-name">2Labs Brand AI · Senior Designer</div>
+            <p class="if-import" style="display:none;">I kept your core colors, added an accent for energy and a highlight for calls-to-action, and built out semantic and neutral scales so every state stays on-brand. All pairings pass <b>WCAG&nbsp;2.2&nbsp;AA</b> contrast.</p>
+            <p class="if-blank" style="display:none;">I've drafted a warm, trustworthy palette that suits community &amp; nonprofit work — a confident core with an accent and highlight, plus full semantic and neutral scales. Everything passes <b>WCAG&nbsp;2.2&nbsp;AA</b>.</p>
+          </div>
+        </div>
+        <div class="review-block">
+          <div class="review-block-head"><h4>🎨 Color system</h4><span class="edit-link">Regenerate</span></div>
+          <p class="block-note">Click any swatch to pick a new color, or edit the hex. Recommended additions are ringed in violet.</p>
+          <div class="color-group"><div class="color-group-label">Core</div><div class="swatch-row" id="coreRow"></div></div>
+          <div class="color-group"><div class="color-group-label">AI accents <span class="ai-badge">◈ Recommended</span></div><div class="swatch-row" id="accentRow"></div></div>
+          <div class="color-group"><div class="color-group-label">Semantic <span class="ai-badge">◈ Added</span></div><div class="swatch-row" id="semanticRow"></div></div>
+          <div class="color-group"><div class="color-group-label">Neutrals <span class="ai-badge">◈ Added</span></div><div class="swatch-row" id="neutralRow"></div></div>
+          <div class="a11y-note">♿ All text/background pairings checked — WCAG 2.2 AA compliant</div>
+        </div>
+        <div class="review-block">
+          <div class="review-block-head"><h4>🔤 Typography</h4><span class="edit-link">Edit</span></div>
+          <p class="block-note">A heading/body pairing chosen for a friendly, credible feel.</p>
+          <div class="font-row">
+            <div class="font-sample"><b class="fs-head" id="headFont">Plus Jakarta Sans</b><span>Headings</span></div>
+            <div class="font-sample"><b class="fs-body" id="bodyFont">Inter</b><span>Body text</span></div>
+          </div>
+        </div>
+        <div class="review-block">
+          <div class="review-block-head"><h4>🏷️ Logo</h4><span class="edit-link">Replace</span></div>
+          <p class="block-note if-import" style="display:none;">Imported and prepared in light &amp; dark variants for you.</p>
+          <p class="block-note if-blank" style="display:none;">No logo yet — we generated a wordmark. Upload your own anytime.</p>
+          <div class="logo-row">
+            <div class="logo-item"><div class="logo-thumb light"><img src="/logo.png" alt="" /></div><div class="logo-caption">Light</div></div>
+            <div class="logo-item"><div class="logo-thumb dark"><img src="/logo.png" alt="" /></div><div class="logo-caption">Dark</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3 : CONTENT -->
+      <div class="step-panel" data-panel="3">
+        <div class="eyebrow">Step 3 of 5</div>
+        <h2 class="if-import" style="display:none;">About your organization</h2>
+        <h2 class="if-blank" style="display:none;">Tell us about your organization</h2>
+        <p class="sub if-import" style="display:none;">We drafted this from your existing site — adjust anything so it sounds like you.</p>
+        <p class="sub if-blank" style="display:none;">This shapes every page we build, so be as specific as you can. Fields marked <span class="req">*</span> are required.</p>
+        <div class="field"><label>Organization name <span class="req if-blank" style="display:none;">*</span></label><input type="text" id="orgName" /></div>
+        <div class="field"><label>Mission statement <span class="req if-blank" style="display:none;">*</span> <span class="ai-badge if-import" style="display:none;">◈ Drafted from your site</span></label><textarea id="mission"></textarea></div>
+        <div class="field"><label>What you offer <span class="req if-blank" style="display:none;">*</span></label><div class="chip-row" id="offerRow"></div><div class="field-hint if-blank" style="display:none;">Add each program or service — we'll build a page or section for each.</div></div>
+        <div class="field"><label>Main goal for site visitors <span class="req if-blank" style="display:none;">*</span></label><div class="field-hint" style="margin-top:0; margin-bottom:4px;">This becomes the primary call-to-action across your site.</div><div class="chip-row" id="goalRow"></div></div>
+      </div>
+
+      <!-- STEP 4 : REVIEW -->
+      <div class="step-panel" data-panel="4">
+        <div class="eyebrow">Step 4 of 5</div>
+        <h2>Ready to build your site?</h2>
+        <p class="sub">Here's everything we'll use. When you generate, our senior design &amp; development team builds a complete, world-class site — this takes a few minutes.</p>
+        <div class="summary-grid">
+          <div class="summary-card">
+            <h5>Brand</h5>
+            <div class="summary-swatches" id="summarySwatches"></div>
+            <div class="summary-line" id="summaryFonts"><span>Fonts:</span> Plus Jakarta Sans · Inter</div>
+            <div class="summary-line"><span>Logo:</span> light &amp; dark ready</div>
+            <span class="edit-link" onclick="goTo(2)">Edit brand</span>
+          </div>
+          <div class="summary-card">
+            <h5>Content</h5>
+            <div class="summary-line" id="summaryOrg"><span>Org:</span> —</div>
+            <div class="summary-line" id="summaryOffer"><span>Offers:</span> 0</div>
+            <div class="summary-line" id="summaryGoal"><span>Goal:</span> (not set)</div>
+            <span class="edit-link" onclick="goTo(3)">Edit content</span>
+          </div>
+        </div>
+        <div class="color-group-label" style="margin-bottom:9px;">What our team will build</div>
+        <div class="build-promise">
+          <div class="promise"><div class="promise-ico">✓</div><div class="promise-txt"><b>Full site structure &amp; navigation</b><span>Senior UX designer maps pages, menus &amp; user flows around your main goal</span></div></div>
+          <div class="promise"><div class="promise-ico">✓</div><div class="promise-txt"><b>Custom design &amp; imagery</b><span>Senior web designer applies your brand with tailored visuals on every page</span></div></div>
+          <div class="promise"><div class="promise-ico">✓</div><div class="promise-txt"><b>Responsive, standards-compliant build</b><span>Mobile-first, W3C-valid markup, WCAG 2.2 AA accessible</span></div></div>
+          <div class="promise"><div class="promise-ico">✓</div><div class="promise-txt"><b>SEO &amp; LLM findability</b><span>Meta tags, sitemap, schema.org data, llms.txt &amp; clean semantics</span></div></div>
+          <div class="promise"><div class="promise-ico">✓</div><div class="promise-txt if-import" style="display:none;"><b>Content rewritten &amp; migrated</b><span>Senior content strategist rewrites your pages for the new design</span></div><div class="promise-txt if-blank" style="display:none;"><b>Content written from best practices</b><span>Senior content strategist writes each page around your offers &amp; main goal</span></div></div>
+          <div class="promise"><div class="promise-ico">✓</div><div class="promise-txt"><b>Brand saved to Settings</b><span>Your full brand system is stored under Settings → Brand Guidelines, editable anytime</span></div></div>
+        </div>
+        <label class="confirm-box" for="confirmChk">
+          <input type="checkbox" id="confirmChk" />
+          <span><b>I'm ready — generate my site.</b> You'll get a private staging site to review before anything goes live. Nothing publishes automatically.</span>
+        </label>
+      </div>
+
+      <!-- STEP 5 : BUILD -->
+      <div class="step-panel" data-panel="5">
+        <div class="build-head center" id="buildHead">
+          <div class="eyebrow" style="display:inline-block;">Step 5 of 5 · Building</div>
+          <h2>Our team is building your site</h2>
+          <p class="sub" style="margin-bottom:0;">Four senior specialists are working in parallel. Hang tight — this usually takes a few minutes.</p>
+        </div>
+        <div class="team-list" id="teamList">
+          <div class="team-row waiting" data-team="0"><div class="team-ico">🧭</div><div class="team-main"><div class="team-role">Senior UX Designer</div><div class="team-task">Mapping site structure, navigation &amp; user flows</div></div><div class="team-status"><span class="spinner"></span> Queued</div></div>
+          <div class="team-row waiting" data-team="1"><div class="team-ico">🎨</div><div class="team-main"><div class="team-role">Senior Web Designer</div><div class="team-task">Applying your brand, layouts &amp; custom imagery</div></div><div class="team-status"><span class="spinner"></span> Queued</div></div>
+          <div class="team-row waiting" data-team="2"><div class="team-ico">⚙️</div><div class="team-main"><div class="team-role">Senior Web Developer</div><div class="team-task">Building responsive pages · W3C valid · WCAG 2.2 AA</div></div><div class="team-status"><span class="spinner"></span> Queued</div></div>
+          <div class="team-row waiting" data-team="3"><div class="team-ico">✍️</div><div class="team-main"><div class="team-role">Senior Content &amp; AI Strategist</div><div class="team-task">Writing your content · SEO + LLM findability</div></div><div class="team-status"><span class="spinner"></span> Queued</div></div>
+        </div>
+        <div class="center" id="buildDone" style="display:none;">
+          <div class="done-icon">✓</div>
+          <h2 style="margin:0 0 6px;">Your site is ready</h2>
+          <p class="sub" style="margin:0 auto; max-width:400px;">A staging site you can shape in the editor. Brand, content and structure are all editable.</p>
+          <div class="saved-note">◈ Brand system saved to Settings → Brand Guidelines</div>
+          <div class="done-actions">
+            <a class="btn btn-primary btn-lg" id="openEditorBtn" href="/dashboard">Go to your sites →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions" id="cardActions">
+        <button class="btn btn-ghost" id="backBtn" onclick="goTo(current-1)">← Back</button>
+        <button class="btn btn-primary" id="nextBtn" onclick="onNext()">Continue →</button>
+      </div>
+    </div>
+  </div>
+
+<script is:inline>
+  const TOKEN_KEY = '2labs_sites_token';
+  const authToken = () => localStorage.getItem(TOKEN_KEY);
+  function apiFetch(path, opts = {}) {
+    return fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-2labs-session': authToken() || '', 'Authorization': 'Bearer ' + (authToken() || ''), ...(opts.headers || {}) } });
+  }
+
+  // Starter palettes (the AI Brand Designer will replace these in Part B).
+  const PALETTES = {
+    import: {
+      core:[{name:'Primary',hex:'#1F3A5F'},{name:'Secondary',hex:'#F5A623'},{name:'Surface',hex:'#F7F5F1'}],
+      accent:[{name:'Teal',hex:'#2E9E8F',rec:true},{name:'Coral',hex:'#E8654E',rec:true}],
+      semantic:[{name:'Success',hex:'#2F8558'},{name:'Warning',hex:'#E8A317'},{name:'Error',hex:'#D64545'},{name:'Info',hex:'#2F6FB0'}],
+      neutral:[{name:'Ink',hex:'#1F2430'},{name:'Slate',hex:'#3D4351'},{name:'Muted',hex:'#676F7E'},{name:'Silver',hex:'#A7ADB8'},{name:'Line',hex:'#E2DDD7'},{name:'Paper',hex:'#F7F5F1'}]
+    },
+    blank: {
+      core:[{name:'Primary',hex:'#2F5DA8'},{name:'Secondary',hex:'#F2A93B'},{name:'Surface',hex:'#F7F6F4'}],
+      accent:[{name:'Teal',hex:'#2BB0A0',rec:true},{name:'Coral',hex:'#EC6A55',rec:true}],
+      semantic:[{name:'Success',hex:'#2F8558'},{name:'Warning',hex:'#E8A317'},{name:'Error',hex:'#D64545'},{name:'Info',hex:'#2F6FB0'}],
+      neutral:[{name:'Ink',hex:'#1F2430'},{name:'Slate',hex:'#3D4351'},{name:'Muted',hex:'#676F7E'},{name:'Silver',hex:'#A7ADB8'},{name:'Line',hex:'#E4E0DB'},{name:'Paper',hex:'#F7F6F4'}]
+    }
+  };
+  const CONTENT = { import:{org:'',mission:'',offers:[],goal:null}, blank:{org:'',mission:'',offers:[],goal:null} };
+  const GOALS = ['Donate','Volunteer','Book / Contact us','Sign up','Buy'];
+
+  let mode = 'import';
+  let current = 1;
+  const total = 5;
+  let createdSlug = null;
+
+  function applyMode(){
+    document.body.dataset.mode = mode;
+    document.querySelectorAll('.if-import, .inline-import').forEach(el=>{ el.style.display = (mode==='import') ? '' : 'none'; });
+    document.querySelectorAll('.if-blank, .inline-blank').forEach(el=>{ el.style.display = (mode==='blank') ? '' : 'none'; });
+  }
+  function setMode(m){
+    mode = m; applyMode();
+    document.getElementById('choiceImport').classList.toggle('selected', m==='import');
+    document.getElementById('choiceBlank').classList.toggle('selected', m==='blank');
+    document.getElementById('importPanel').classList.toggle('hidden', m!=='import');
+    document.getElementById('blankPanel').classList.toggle('hidden', m!=='blank');
+  }
+
+  function makeSwatch(c){
+    const wrap=document.createElement('div'); wrap.className='swatch'+(c.rec?' rec':'');
+    const color=document.createElement('input'); color.type='color'; color.className='swatch-color'; color.value=c.hex;
+    const hex=document.createElement('input'); hex.type='text'; hex.className='swatch-hex'; hex.value=c.hex; hex.maxLength=7;
+    const name=document.createElement('div'); name.className='swatch-name'; name.textContent=c.name;
+    color.addEventListener('input',()=>{ hex.value=color.value.toUpperCase(); c.hex=color.value; });
+    hex.addEventListener('change',()=>{ if(/^#[0-9a-fA-F]{6}$/.test(hex.value)){ color.value=hex.value; c.hex=hex.value; } });
+    wrap.append(color,hex,name); return wrap;
+  }
+  function renderColors(){
+    const p = PALETTES[mode];
+    const map = { coreRow:p.core, accentRow:p.accent, semanticRow:p.semantic, neutralRow:p.neutral };
+    for(const id in map){ const row=document.getElementById(id); row.innerHTML=''; map[id].forEach(c=>row.appendChild(makeSwatch(c))); }
+  }
+
+  function makeChip(text){ const c=document.createElement('span'); c.className='chip'; c.contentEditable='true'; c.textContent=text; return c; }
+  function renderContent(){
+    const d = CONTENT[mode];
+    const on=document.getElementById('orgName'); on.value=d.org; on.placeholder='e.g. Riverside Youth Outreach';
+    const mi=document.getElementById('mission'); mi.value=d.mission; mi.placeholder='In one or two sentences, what does your organization do and who for?';
+    const offerRow=document.getElementById('offerRow'); offerRow.innerHTML='';
+    d.offers.forEach(o=>offerRow.appendChild(makeChip(o)));
+    const add=document.createElement('span'); add.className='chip add'; add.textContent='+ Add';
+    add.onclick=()=>{ const c=makeChip('New offering'); offerRow.insertBefore(c,add); c.focus(); const r=document.createRange(); r.selectNodeContents(c); const s=getSelection(); s.removeAllRanges(); s.addRange(r); };
+    offerRow.appendChild(add);
+    const goalRow=document.getElementById('goalRow'); goalRow.innerHTML='';
+    GOALS.forEach(g=>{ const chip=document.createElement('span'); chip.className='chip goal'+(d.goal===g?' goal-sel':''); chip.textContent=g; chip.onclick=()=>{ CONTENT[mode].goal=g; renderContent(); }; goalRow.appendChild(chip); });
+    on.oninput=()=>{ d.org=on.value; updateOrgPill(); };
+    mi.oninput=()=>{ d.mission=mi.value; };
+  }
+  function updateOrgPill(){
+    const org = (CONTENT[mode].org || '').trim();
+    document.getElementById('orgPillName').textContent = org || 'New site';
+    document.getElementById('orgAvatar').textContent = org ? org.split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase() : '2L';
+  }
+
+  function renderSummary(){
+    const p = PALETTES[mode];
+    const sw=document.getElementById('summarySwatches'); sw.innerHTML='';
+    [...p.core, ...p.accent].forEach(c=>{ const i=document.createElement('i'); i.style.background=c.hex; sw.appendChild(i); });
+    document.getElementById('summaryFonts').innerHTML='<span>Fonts:</span> Plus Jakarta Sans · Inter';
+    const org=(document.getElementById('orgName').value||'').trim()||'(your org)';
+    const offerCount=document.querySelectorAll('#offerRow .chip:not(.add)').length;
+    const goal=CONTENT[mode].goal||'(not set)';
+    document.getElementById('summaryOrg').innerHTML='<span>Org:</span> '+org;
+    document.getElementById('summaryOffer').innerHTML='<span>Offers:</span> '+offerCount+' program'+(offerCount===1?'':'s');
+    document.getElementById('summaryGoal').innerHTML='<span>Goal:</span> '+goal;
+  }
+
+  // Assemble the Wizard Brief (Build Brief §2.3) — the object the Studio consumes.
+  function buildBrief(){
+    const p = PALETTES[mode];
+    const offers = [...document.querySelectorAll('#offerRow .chip:not(.add)')].map(c=>c.textContent.trim()).filter(Boolean);
+    const map = (a)=>a.map(c=>({ name:c.name, hex:c.hex, ...(c.rec?{ai_recommended:true}:{}) }));
+    return {
+      mode,
+      source: { url: (document.getElementById('urlInput').value||'').trim(), scanned: mode==='import' },
+      brand: {
+        colors: { core:map(p.core), accents:map(p.accent), semantic:map(p.semantic), neutral:map(p.neutral) },
+        typography: { heading:'Plus Jakarta Sans', body:'Inter', scale:{h1:32,h2:24,h3:19,body:16,small:13} },
+        a11y: { standard:'WCAG 2.2 AA', passed:true }
+      },
+      content: {
+        org_name: (document.getElementById('orgName').value||'').trim(),
+        mission: (document.getElementById('mission').value||'').trim(),
+        offers,
+        primary_goal: CONTENT[mode].goal || null
+      }
+    };
+  }
+
+  // Create the site record. Full AI generation (the Studio, Part B) is the next
+  // phase; for now we persist the brief with the new site and open the editor.
+  async function createSite(){
+    const brief = buildBrief();
+    const name = brief.content.org_name || 'New site';
+    const domain = brief.source.url ? brief.source.url.replace(/^https?:\/\//,'').replace(/\/+$/,'') : '';
+    try {
+      const res = await apiFetch('/api/save-site', { method:'POST', body: JSON.stringify({ name, domain, brief }) });
+      const data = await res.json().catch(()=>({}));
+      if (data.status==='ok' && data.site) createdSlug = data.site.slug;
+    } catch(e) { /* the editor link falls back to the dashboard */ }
+  }
+
+  let buildTimers = [];
+  function runBuild(){
+    createSite(); // fire the creation in parallel with the progress animation
+    document.getElementById('buildHead').style.display='block';
+    document.getElementById('teamList').style.display='block';
+    document.getElementById('buildDone').style.display='none';
+    const rows=document.querySelectorAll('#teamList .team-row');
+    rows.forEach(r=>{ r.className='team-row waiting'; r.querySelector('.team-status').innerHTML='<span class="spinner"></span> Queued'; });
+    buildTimers.forEach(t=>clearTimeout(t)); buildTimers=[];
+    rows.forEach((r,i)=>{
+      buildTimers.push(setTimeout(()=>{ r.classList.remove('waiting'); r.querySelector('.team-status').innerHTML='<span class="spinner"></span> Working…'; }, 400+i*900));
+      buildTimers.push(setTimeout(()=>{ r.classList.add('done'); r.querySelector('.team-status').innerHTML='<span class="check">✓</span> Done'; }, 1600+i*1100));
+    });
+    buildTimers.push(setTimeout(()=>{
+      document.getElementById('buildHead').style.display='none';
+      document.getElementById('teamList').style.display='none';
+      // New sites have nothing to edit until the Studio (Part B) generates them;
+      // route to the dashboard where the new site now appears as a card.
+      document.getElementById('openEditorBtn').href = '/dashboard';
+      document.getElementById('buildDone').style.display='block';
+    }, 1600+rows.length*1100+700));
+  }
+
+  function goTo(n){
+    if(n<1)n=1; if(n>total)n=total; current=n; render();
+    if(n===2) renderColors();
+    if(n===3){ renderContent(); updateOrgPill(); }
+    if(n===4) renderSummary();
+    if(n===5) runBuild();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function onNext(){ if(current<total) goTo(current+1); }
+  function render(){
+    document.querySelectorAll('.step').forEach(s=>{ const n=parseInt(s.dataset.step); s.classList.remove('active','done'); if(n<current)s.classList.add('done'); if(n===current)s.classList.add('active'); });
+    document.querySelectorAll('.step-panel').forEach(p=>{ p.classList.toggle('active', parseInt(p.dataset.panel)===current); });
+    const actions=document.getElementById('cardActions'); const next=document.getElementById('nextBtn');
+    if(current===1||current===5){ actions.style.display='none'; return; }
+    actions.style.display='flex';
+    if(current===4){ next.textContent='Generate my site →'; next.disabled=!document.getElementById('confirmChk').checked; next.onclick=()=>goTo(5); }
+    else { next.textContent='Continue →'; next.disabled=false; next.onclick=onNext; }
+  }
+  document.getElementById('confirmChk').addEventListener('change', function(){ document.getElementById('nextBtn').disabled = !this.checked; });
+
+  setMode('import');
+  render();
+</script>
+
+</body>
+</html>
