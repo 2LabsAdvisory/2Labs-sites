@@ -43,6 +43,19 @@ function tokensFromBrand(brand) {
   const heading = (t.heading || 'Plus Jakarta Sans').replace(/'/g, '');
   const body = (t.body || 'Inter').replace(/'/g, '');
 
+  // Configurable design tokens (edited in Settings → Brand Guidelines).
+  const num = (v, def, min, max) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
+  const sc = t.scale || {};
+  const fs = {
+    h1: num(sc.h1, 32, 20, 96), h2: num(sc.h2, 24, 16, 72), h3: num(sc.h3, 19, 14, 48),
+    body: num(sc.body, 16, 12, 22), small: num(sc.small, 13, 10, 18),
+  };
+  fs.h4 = Math.round((fs.h3 + fs.body) / 2);
+  const tk = (brand && brand.tokens) || {};
+  const radius = num(tk.radius, 14, 0, 40);
+  const sp = Array.isArray(tk.spacing) && tk.spacing.length === 6 ? tk.spacing.map((v, i) => num(v, [4, 8, 12, 16, 24, 32][i], 0, 160)) : [4, 8, 12, 16, 24, 32];
+  const logoUrl = brand && brand.logo && typeof brand.logo.url === 'string' && /^[^"')\s]+$/.test(brand.logo.url) ? brand.logo.url : '';
+
   return `:root {
   --bg: ${paper};
   --surface: #FFFFFF;
@@ -59,10 +72,14 @@ function tokensFromBrand(brand) {
   --accent: ${accent};
   --accent-contrast: ${bestTextOn(accent)};
   --success: #2F8558;
-  --radius: 14px;
+  --radius: ${radius}px;
   --shadow: 0 1px 2px rgba(16,24,40,0.04), 0 10px 28px rgba(16,24,40,0.08);
   --font-heading: '${heading}', sans-serif;
   --font-body: '${body}', sans-serif;
+  /* type scale */
+  --fs-h1: ${fs.h1}px; --fs-h2: ${fs.h2}px; --fs-h3: ${fs.h3}px; --fs-h4: ${fs.h4}px; --fs-body: ${fs.body}px; --fs-small: ${fs.small}px;
+  /* spacing scale */
+  --space-1: ${sp[0]}px; --space-2: ${sp[1]}px; --space-3: ${sp[2]}px; --space-4: ${sp[3]}px; --space-5: ${sp[4]}px; --space-6: ${sp[5]}px;${logoUrl ? `\n  --logo-url: url("${logoUrl}");` : ''}
   /* aliases — so a page that reaches for a common name still resolves */
   --on-primary: var(--primary-contrast);
   --text: var(--ink); --text-muted: var(--ink-soft); --muted: var(--ink-soft);
@@ -70,8 +87,10 @@ function tokensFromBrand(brand) {
   --color-primary: var(--primary); --primary-tint-strong: var(--primary-soft);
 }
 *, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: var(--fs-body); -webkit-font-smoothing: antialiased; }
 h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; color: var(--ink); }
+h1 { font-size: var(--fs-h1); } h2 { font-size: var(--fs-h2); } h3 { font-size: var(--fs-h3); } h4 { font-size: var(--fs-h4); }
+small { font-size: var(--fs-small); }
 p, li { color: var(--ink); }
 a { color: inherit; }
 img { max-width: 100%; }

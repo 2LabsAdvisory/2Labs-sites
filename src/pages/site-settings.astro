@@ -140,8 +140,22 @@
   .btn-demo{ display:inline-flex; padding:8px 16px; background:var(--amber); color:var(--ink); font-weight:700; font-size:12px; border-radius:9px; }
   .space-demo{ display:flex; align-items:center; gap:6px; }
   .space-demo i{ background:var(--amber); display:block; height:12px; }
-  .voice-tags{ display:flex; gap:8px; flex-wrap:wrap; }
-  .voice-tag{ background:var(--amber-tint-strong); color:var(--amber-dark); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; border:1px solid #F3E3B8; }
+  .voice-tags{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .voice-tag{ display:inline-flex; align-items:center; gap:6px; background:var(--amber-tint-strong); color:var(--amber-dark); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; border:1px solid #F3E3B8; }
+  .voice-tag [contenteditable]{ outline:none; min-width:14px; } .voice-tag [contenteditable]:focus{ color:var(--ink); }
+  .voice-tag .vx{ cursor:pointer; opacity:.55; font-weight:700; } .voice-tag .vx:hover{ opacity:1; }
+  .voice-add{ background:var(--bg); color:var(--ink-soft); border:1px dashed var(--border); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; cursor:pointer; }
+  .voice-add:hover{ color:var(--ink); border-color:var(--ink-soft); }
+  /* editable scale + spacing grids */
+  .scale-grid{ display:flex; gap:14px; flex-wrap:wrap; }
+  .scale-cell{ display:flex; flex-direction:column; gap:5px; }
+  .scale-cell label{ font-size:10.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.04em; }
+  .scale-cell input{ width:64px; border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-family:'IBM Plex Mono',monospace; font-size:13px; background:var(--bg); color:var(--ink); text-align:center; }
+  .scale-cell input:focus{ outline:none; border-color:var(--amber); background:#fff; }
+  .stepper{ display:flex; align-items:center; gap:7px; }
+  .stepper input{ width:70px; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:'IBM Plex Mono',monospace; font-size:13px; background:var(--bg); color:var(--ink); text-align:center; }
+  .stepper input:focus{ outline:none; border-color:var(--amber); background:#fff; }
+  .stepper span{ font-size:12px; color:var(--ink-soft); }
 
   /* empty / coming-soon placeholders */
   .placeholder{ background:var(--surface); border:1px dashed var(--border); border-radius:var(--radius); padding:40px 24px; text-align:center; max-width:860px; }
@@ -223,9 +237,12 @@
         <div class="content-head">
           <div>
             <h2>Brand Guidelines</h2>
-            <p class="content-sub">Your brand system — created during setup and applied automatically across every page. Edit anything here and the whole site updates on your next build.</p>
+            <p class="content-sub">Your brand system — applied across every page. Edit anything here and <b>Save changes</b> to update the whole site.</p>
           </div>
-          <div class="saved-pill" id="brandOrigin" style="display:none;">◈ Created from onboarding</div>
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+            <button class="btn btn-ghost" id="downloadBrandBtn" style="white-space:nowrap;">⬇ Download brand guidelines</button>
+            <div class="saved-pill" id="brandOrigin" style="display:none;">◈ Created from onboarding</div>
+          </div>
         </div>
 
         <div id="brandEmpty" class="placeholder" style="display:none;">
@@ -235,9 +252,19 @@
         </div>
 
         <div id="brandBody" style="display:none;">
+          <!-- brand basics -->
+          <div class="panel">
+            <div class="panel-head"><h3>✦ Brand basics</h3></div>
+            <p class="panel-desc">The identity that anchors the brand system.</p>
+            <div class="row">
+              <div class="field" style="margin-bottom:0;"><label for="fTagline">Tagline</label><input id="fTagline" placeholder="e.g. Building brighter futures, together" /></div>
+              <div class="field" style="margin-bottom:0;"><label for="fCtaLabel">Primary call-to-action</label><input id="fCtaLabel" placeholder="e.g. Donate, Book now, Get a quote" /></div>
+            </div>
+          </div>
+
           <!-- color system (live) -->
           <div class="panel">
-            <div class="panel-head"><h3>🎨 Color system</h3><button class="link" disabled title="Coming soon">Regenerate with AI</button></div>
+            <div class="panel-head"><h3>🎨 Color system</h3></div>
             <p class="panel-desc">Click a swatch to change it, or edit the hex. AI-recommended additions are ringed in violet.</p>
             <div class="color-group"><div class="color-group-label">Core</div><div class="swatch-row" id="bgCore"></div></div>
             <div class="color-group"><div class="color-group-label">Accents <span class="ai-badge">◈ AI recommended</span></div><div class="swatch-row" id="bgAccent"></div></div>
@@ -246,10 +273,10 @@
             <div class="a11y-note" id="bgA11y" style="display:none;">♿ All text/background pairings pass WCAG 2.2 AA contrast</div>
           </div>
 
-          <!-- typography (live) -->
+          <!-- typography (live, editable scale) -->
           <div class="panel">
             <div class="panel-head"><h3>🔤 Typography</h3></div>
-            <p class="panel-desc">Font families and the type scale used across headings and body copy.</p>
+            <p class="panel-desc">Font families and the type scale used across headings and body copy. Sizes are in pixels.</p>
             <div class="type-row">
               <div class="type-left"><div class="t-role">Headings</div><div class="t-name head" id="headName">—</div></div>
               <select class="select" id="headSelect"></select>
@@ -259,48 +286,51 @@
               <select class="select" id="bodySelect"></select>
             </div>
             <div class="type-row" style="display:block;">
-              <div class="t-role" style="margin-bottom:8px;">Type scale</div>
-              <div class="type-scale" id="typeScale"></div>
+              <div class="t-role" style="margin-bottom:10px;">Type scale (px)</div>
+              <div class="scale-grid" id="scaleGrid"></div>
             </div>
           </div>
 
-          <!-- logo (mockup / display) -->
+          <!-- logo (live upload) -->
           <div class="panel">
-            <div class="panel-head"><h3>🏷️ Logo</h3><button class="link" disabled title="Coming soon">Upload new</button></div>
-            <p class="panel-desc">Prepared in light, dark, and mark-only variants for use across the site.</p>
+            <div class="panel-head"><h3>🏷️ Logo</h3><button class="link" id="logoUploadBtn">Upload logo</button></div>
+            <p class="panel-desc">Upload your logo (PNG, SVG, JPG). It's used across the site's header &amp; footer and in your brand guidelines. Transparent PNG or SVG works best.</p>
+            <input type="file" id="logoFile" accept="image/png,image/svg+xml,image/jpeg,image/webp" style="display:none;" />
             <div class="logo-row">
-              <div class="logo-card"><div class="logo-box light"><img src="/logo.png" alt="Logo on light" /></div><div class="logo-cap">Light background</div></div>
-              <div class="logo-card"><div class="logo-box dark"><img src="/logo.png" alt="Logo on dark" /></div><div class="logo-cap">Dark background</div></div>
+              <div class="logo-card"><div class="logo-box light" id="logoLight"><span class="wordmark" style="color:var(--ink);" id="logoWordLight">2L</span></div><div class="logo-cap">Light background</div></div>
+              <div class="logo-card"><div class="logo-box dark" id="logoDark"><span class="wordmark" style="color:#fff;" id="logoWordDark">2L</span></div><div class="logo-cap">Dark background</div></div>
               <div class="logo-card"><div class="logo-box mark"><span class="wordmark" id="logoWordmark" style="color:var(--ink);">2L</span></div><div class="logo-cap">Wordmark / favicon</div></div>
             </div>
+            <div id="logoStatus" class="field-hint" style="margin-top:10px; display:none;"></div>
           </div>
 
-          <!-- UI tokens (voice is live; the rest are derived display) -->
+          <!-- layout & style (live radius + spacing) -->
           <div class="panel">
-            <div class="panel-head"><h3>🧩 UI tokens</h3></div>
-            <p class="panel-desc">Derived from your brand and reused by every component the builder generates.</p>
+            <div class="panel-head"><h3>🧩 Layout &amp; style</h3></div>
+            <p class="panel-desc">Shape and spacing tokens every generated component inherits.</p>
             <div class="token-grid">
               <div class="token">
                 <div class="token-label">Corner radius</div>
-                <div class="token-val">--radius: 10px</div>
-                <div class="radius-demo" style="border-radius:10px;"></div>
+                <div class="stepper"><input type="number" id="radiusInput" min="0" max="40" step="1" /><span>px</span></div>
+                <div class="radius-demo" id="radiusDemo" style="margin-top:10px;"></div>
               </div>
               <div class="token">
                 <div class="token-label">Primary button</div>
                 <div class="token-val" id="btnTokenVal">bg primary · contrast text</div>
                 <span class="btn-demo" id="btnTokenDemo">Get started</span>
               </div>
-              <div class="token">
-                <div class="token-label">Spacing scale</div>
-                <div class="token-val">4 · 8 · 12 · 16 · 24 · 32</div>
-                <div class="space-demo"><i style="width:4px;"></i><i style="width:8px;"></i><i style="width:12px;"></i><i style="width:16px;"></i><i style="width:24px;"></i></div>
-              </div>
-              <div class="token">
-                <div class="token-label">Voice &amp; tone <span class="ai-badge">◈ AI</span></div>
-                <div class="token-val" style="margin-bottom:8px;">Guides all written content</div>
-                <div class="voice-tags" id="bgVoice"></div>
+              <div class="token" style="grid-column:1 / -1;">
+                <div class="token-label">Spacing scale (px)</div>
+                <div class="scale-grid" id="spaceGrid" style="margin-top:8px;"></div>
               </div>
             </div>
+          </div>
+
+          <!-- voice & tone (live, editable) -->
+          <div class="panel">
+            <div class="panel-head"><h3>🗣️ Voice &amp; tone <span class="ai-badge">◈ Guides content</span></h3></div>
+            <p class="panel-desc">Adjectives that guide all written content. Click a tag to edit, × to remove.</p>
+            <div class="voice-tags" id="bgVoice"></div>
           </div>
         </div>
       </div>
@@ -446,15 +476,83 @@
     list.forEach((f) => { const o = document.createElement('option'); o.value = f; o.textContent = f; if (f === current) o.selected = true; sel.appendChild(o); });
   }
 
-  // Update the primary-button token demo from the live brand primary.
+  // Update the primary-button + radius demos from the live brand.
   function syncTokenDemo() {
-    const core = currentBrief && currentBrief.brand && currentBrief.brand.colors && currentBrief.brand.colors.core;
-    if (!core || !core[0]) return;
-    const primary = core[0].hex || '#F59F0A';
-    const demo = $('btnTokenDemo'); if (!demo) return;
-    demo.style.background = primary;
-    demo.style.color = bestTextOn(primary);
-    $('btnTokenVal').textContent = 'bg ' + (core[0].name || 'primary').toLowerCase() + ' · ' + (bestTextOn(primary) === '#FFFFFF' ? 'light' : 'dark') + ' text';
+    const brand = currentBrief && currentBrief.brand; if (!brand) return;
+    const core = brand.colors && brand.colors.core;
+    const radius = (brand.tokens && brand.tokens.radius != null) ? brand.tokens.radius : 14;
+    const demo = $('btnTokenDemo');
+    if (core && core[0] && demo) {
+      const primary = core[0].hex || '#F59F0A';
+      demo.style.background = primary; demo.style.color = bestTextOn(primary); demo.style.borderRadius = radius + 'px';
+      $('btnTokenVal').textContent = 'bg ' + (core[0].name || 'primary').toLowerCase() + ' · ' + (bestTextOn(primary) === '#FFFFFF' ? 'light' : 'dark') + ' text';
+    }
+    if ($('radiusDemo')) $('radiusDemo').style.borderRadius = radius + 'px';
+  }
+
+  const clampInt = (v, def, min, max) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
+  const SCALE_KEYS = [['h1', 'H1'], ['h2', 'H2'], ['h3', 'H3'], ['body', 'Body'], ['small', 'Small']];
+  const SCALE_BOUNDS = { h1: [20, 96], h2: [16, 72], h3: [14, 48], body: [12, 22], small: [10, 18] };
+  const SCALE_DEF = { h1: 32, h2: 24, h3: 19, body: 16, small: 13 };
+
+  function renderScale(t) {
+    const sc = t.scale || (t.scale = { ...SCALE_DEF });
+    for (const k of Object.keys(SCALE_DEF)) if (sc[k] == null) sc[k] = SCALE_DEF[k];
+    const grid = $('scaleGrid'); grid.innerHTML = '';
+    SCALE_KEYS.forEach(([key, label]) => {
+      const cell = document.createElement('div'); cell.className = 'scale-cell';
+      const lab = document.createElement('label'); lab.textContent = label;
+      const inp = document.createElement('input'); inp.type = 'number'; inp.value = sc[key]; inp.min = SCALE_BOUNDS[key][0]; inp.max = SCALE_BOUNDS[key][1];
+      inp.oninput = () => { sc[key] = clampInt(inp.value, SCALE_DEF[key], SCALE_BOUNDS[key][0], SCALE_BOUNDS[key][1]); };
+      cell.append(lab, inp); grid.appendChild(cell);
+    });
+  }
+
+  const SPACE_DEF = [4, 8, 12, 16, 24, 32];
+  function renderSpacing(tk) {
+    let sp = Array.isArray(tk.spacing) && tk.spacing.length === 6 ? tk.spacing : (tk.spacing = SPACE_DEF.slice());
+    const grid = $('spaceGrid'); grid.innerHTML = '';
+    sp.forEach((val, i) => {
+      const cell = document.createElement('div'); cell.className = 'scale-cell';
+      const lab = document.createElement('label'); lab.textContent = 'S' + (i + 1);
+      const inp = document.createElement('input'); inp.type = 'number'; inp.value = val; inp.min = 0; inp.max = 160;
+      inp.oninput = () => { sp[i] = clampInt(inp.value, SPACE_DEF[i], 0, 160); };
+      cell.append(lab, inp); grid.appendChild(cell);
+    });
+  }
+
+  function collectVoice() {
+    const arr = [...document.querySelectorAll('#bgVoice .voice-tag [contenteditable]')].map((e) => e.textContent.trim()).filter(Boolean);
+    currentBrief.brand.voice = arr;
+  }
+  function voiceChip(text) {
+    const chip = document.createElement('span'); chip.className = 'voice-tag';
+    const ed = document.createElement('span'); ed.contentEditable = 'true'; ed.textContent = text;
+    ed.oninput = collectVoice;
+    ed.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ed.blur(); } };
+    const x = document.createElement('span'); x.className = 'vx'; x.textContent = '×'; x.title = 'Remove';
+    x.onclick = () => { chip.remove(); collectVoice(); };
+    chip.append(ed, x); return chip;
+  }
+  function renderVoice(brand) {
+    const wrap = $('bgVoice'); wrap.innerHTML = '';
+    (brand.voice || []).forEach((v) => wrap.appendChild(voiceChip(v)));
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'voice-add'; add.textContent = '+ Add';
+    add.onclick = () => { const c = voiceChip('new'); wrap.insertBefore(c, add); const ed = c.querySelector('[contenteditable]'); ed.focus(); const r = document.createRange(); r.selectNodeContents(ed); const s = getSelection(); s.removeAllRanges(); s.addRange(r); collectVoice(); };
+    wrap.appendChild(add);
+  }
+
+  function renderLogo(brand) {
+    const url = brand.logo && brand.logo.url;
+    const set = (boxId, wordId, wordColor) => {
+      const box = $(boxId);
+      if (url) { box.innerHTML = ''; const img = document.createElement('img'); img.src = url; img.alt = 'Logo'; box.appendChild(img); }
+      else { box.innerHTML = '<span class="wordmark" id="' + wordId + '" style="color:' + wordColor + ';">' + initials($('fName').value) + '</span>'; }
+    };
+    set('logoLight', 'logoWordLight', 'var(--ink)');
+    set('logoDark', 'logoWordDark', '#fff');
+    $('logoWordmark').textContent = initials($('fName').value);
+    if ($('logoStatus')) { $('logoStatus').style.display = brand.logo && brand.logo.name ? 'block' : 'none'; $('logoStatus').textContent = brand.logo && brand.logo.name ? '✓ ' + brand.logo.name + ' — saved on this brand' : ''; }
   }
   // Minimal luminance check to pick readable text on a swatch.
   function bestTextOn(hex) {
@@ -476,7 +574,14 @@
     fill('bgSemantic', colors.semantic, false);
     fill('bgNeutral', colors.neutral, false);
 
-    // typography (live — selects mutate the brief)
+    // brand basics
+    $('fTagline').value = brand.tagline || '';
+    $('fTagline').oninput = () => { brand.tagline = $('fTagline').value; };
+    const content = currentBrief.content || (currentBrief.content = {});
+    $('fCtaLabel').value = content.primary_goal || '';
+    $('fCtaLabel').oninput = () => { content.primary_goal = $('fCtaLabel').value; };
+
+    // typography (live — selects + scale inputs mutate the brief)
     const t = brand.typography || (brand.typography = {});
     $('headName').textContent = t.heading || 'Plus Jakarta Sans';
     $('bodyName').textContent = t.body || 'Inter';
@@ -484,18 +589,20 @@
     fillSelect($('bodySelect'), BODY_FONTS, t.body || 'Inter');
     $('headSelect').onchange = () => { t.heading = $('headSelect').value; $('headName').textContent = t.heading; };
     $('bodySelect').onchange = () => { t.body = $('bodySelect').value; $('bodyName').textContent = t.body; };
-    const sc = t.scale || { h1: 32, h2: 24, h3: 19, body: 16, small: 13 };
-    $('typeScale').innerHTML =
-      '<span class="ts-h1">H1 ' + sc.h1 + '</span>' +
-      '<span class="ts-h2">H2 ' + sc.h2 + '</span>' +
-      '<span class="ts-h3">H3 ' + sc.h3 + '</span>' +
-      '<span class="ts-body">Body ' + sc.body + '</span>' +
-      '<span class="ts-small">Small ' + sc.small + '</span>';
+    renderScale(t);
 
-    // voice (live)
-    const voice = brand.voice || [];
-    $('bgVoice').innerHTML = '';
-    voice.forEach((v) => { const s = document.createElement('span'); s.className = 'voice-tag'; s.textContent = v; $('bgVoice').appendChild(s); });
+    // layout & style (live radius + spacing)
+    const tk = brand.tokens || (brand.tokens = {});
+    if (tk.radius == null) tk.radius = 14;
+    $('radiusInput').value = tk.radius;
+    $('radiusInput').oninput = () => { tk.radius = clampInt($('radiusInput').value, 14, 0, 40); syncTokenDemo(); };
+    renderSpacing(tk);
+
+    // voice (live, editable)
+    renderVoice(brand);
+
+    // logo (live)
+    renderLogo(brand);
 
     if (brand.a11y) { $('bgA11y').style.display = 'flex'; $('bgA11y').textContent = brand.a11y.passed ? '♿ All text/background pairings pass WCAG 2.2 AA contrast' : '⚠ Some pairings need adjustment for WCAG 2.2 AA'; }
     syncTokenDemo();
@@ -547,6 +654,153 @@
   });
 
   $('discardBtn').addEventListener('click', () => location.reload());
+
+  // Logo upload — stores the image as an asset and attaches its URL to the brand.
+  $('logoUploadBtn').addEventListener('click', () => { if (currentBrief && currentBrief.brand) $('logoFile').click(); });
+  $('logoFile').addEventListener('change', async () => {
+    const file = $('logoFile').files[0]; if (!file) return;
+    const st = $('logoStatus'); st.style.display = 'block';
+    if (file.size > 8 * 1024 * 1024) { st.textContent = 'That file is larger than 8 MB.'; return; }
+    st.textContent = 'Uploading…';
+    try {
+      const dataBase64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+      const up = await apiFetch('/api/upload-asset', { method: 'POST', body: JSON.stringify({ name: file.name, type: file.type, dataBase64 }) });
+      const data = await up.json().catch(() => ({}));
+      if (up.status === 401) { signOut(); return; }
+      if (data.status === 'ok' && data.asset && data.asset.url) {
+        currentBrief.brand.logo = { url: data.asset.url, name: data.asset.name, id: data.asset.id };
+        renderLogo(currentBrief.brand);
+        st.textContent = '✓ ' + data.asset.name + ' uploaded — Save changes to apply it across the site.';
+      } else { st.textContent = data.error || 'Upload failed.'; }
+    } catch (e) { st.textContent = 'Upload failed.'; }
+    $('logoFile').value = '';
+  });
+
+  // Download brand guidelines — a print-ready, 2Labs-branded document.
+  $('downloadBrandBtn').addEventListener('click', () => { if (currentBrief && currentBrief.brand) openBrandGuidelines(); });
+
+  function swatchCardsHTML(arr, usage) {
+    return (arr || []).map((c) => `<div class="bg-sw"><div class="bg-chip" style="background:${c.hex};"></div><div class="bg-nm">${(c.name || '').replace(/</g, '&lt;')}</div><div class="bg-hex">${(c.hex || '').toUpperCase()}</div>${usage ? `<div class="bg-use">${usage}</div>` : ''}</div>`).join('');
+  }
+  function openBrandGuidelines() {
+    const brand = currentBrief.brand || {};
+    const colors = brand.colors || {};
+    const t = brand.typography || {}; const sc = t.scale || SCALE_DEF;
+    const tk = brand.tokens || {}; const radius = tk.radius != null ? tk.radius : 14;
+    const spacing = Array.isArray(tk.spacing) && tk.spacing.length === 6 ? tk.spacing : SPACE_DEF;
+    const name = ($('fName').value || 'Your Brand').trim();
+    const domain = ($('fDomain').value || '').trim();
+    const tagline = brand.tagline || '';
+    const voice = brand.voice || [];
+    const logo = brand.logo && brand.logo.url;
+    const heading = (t.heading || 'Plus Jakarta Sans'), body = (t.body || 'Inter');
+    const gf = encodeURIComponent(heading) + ':wght@500;600;700;800&family=' + encodeURIComponent(body) + ':wght@400;500;600';
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const DOG = `<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 46 C12 38 13 30 17 24 C19 21 22 19 25 19 C27 19 28 20.5 28 22.5 C28 25 26.5 26 25.5 28 C24 31 24 35 25 39 C26 43 27 46 27 46 Z" stroke="#1F242E" stroke-width="2" stroke-linejoin="round"/><path d="M31 46 C29 37 30 28 35 22 C37.5 19 41 17 44 17 C46.5 17 48 18.7 48 21 C48 24 46 25.5 44.5 28 C42.5 31.5 42.5 36 43.5 40.5 C44.5 44 46 46 46 46 Z" fill="#F59F0A"/></svg>`;
+    const logoBlock = logo
+      ? `<img src="${logo}" alt="${name} logo" style="max-height:80px;max-width:260px;object-fit:contain;" />`
+      : `<div style="font-family:'${heading}',sans-serif;font-weight:800;font-size:40px;color:var(--c-ink);">${name}</div>`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${name} — Brand Guidelines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=${gf}&display=swap" rel="stylesheet">
+<style>
+  :root{ --amber:#F59F0A; --ink:#1F242E; --soft:#676F7E; --line:#E5E0DC; --c-ink:${(colors.neutral && colors.neutral[0] && colors.neutral[0].hex) || '#1F242E'}; }
+  *{box-sizing:border-box;} html,body{margin:0;}
+  body{ font-family:'Inter',sans-serif; color:var(--ink); background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  h1,h2,h3{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-.01em; margin:0; }
+  .page{ max-width:900px; margin:0 auto; padding:56px 60px; }
+  .page + .page{ border-top:1px dashed var(--line); }
+  @media print{ .page{ padding:40px 44px; } .page + .page{ page-break-before:always; border-top:none; } .noprint{ display:none !important; } }
+  .cover{ min-height:80vh; display:flex; flex-direction:column; justify-content:center; }
+  .agency{ display:flex; align-items:center; gap:10px; margin-bottom:40px; }
+  .agency svg{ width:34px; height:34px; } .agency b{ font-family:'Plus Jakarta Sans'; font-weight:800; font-size:16px; } .agency b span{ color:var(--amber); }
+  .cover .eyebrow{ font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); margin-bottom:14px; }
+  .cover h1{ font-size:52px; line-height:1.05; margin-bottom:10px; }
+  .cover .tag{ font-size:17px; color:var(--soft); max-width:520px; line-height:1.5; }
+  .cover .meta{ margin-top:36px; font-size:12.5px; color:var(--soft); }
+  .sec-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--amber); margin-bottom:8px; }
+  h2.sec{ font-size:26px; margin-bottom:6px; } .sec-desc{ color:var(--soft); font-size:13.5px; margin:0 0 22px; line-height:1.5; }
+  .grp{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--soft); margin:20px 0 12px; }
+  .bg-row{ display:flex; flex-wrap:wrap; gap:16px; }
+  .bg-sw{ width:120px; } .bg-chip{ height:82px; border-radius:10px; border:1px solid rgba(0,0,0,.08); }
+  .bg-nm{ font-weight:600; font-size:12.5px; margin-top:7px; } .bg-hex{ font-family:'Inter'; font-size:11px; color:var(--soft); letter-spacing:.02em; } .bg-use{ font-size:10.5px; color:var(--soft); margin-top:2px; }
+  .specimen{ border:1px solid var(--line); border-radius:14px; padding:24px 26px; }
+  .specimen .sp{ border-bottom:1px solid var(--line); padding:12px 0; display:flex; align-items:baseline; gap:16px; }
+  .specimen .sp:last-child{ border-bottom:none; } .specimen .sp .lab{ width:80px; font-size:11px; color:var(--soft); text-transform:uppercase; letter-spacing:.05em; flex-shrink:0; }
+  .fonts{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:20px; }
+  .fontcard{ flex:1; min-width:220px; border:1px solid var(--line); border-radius:12px; padding:18px 20px; } .fontcard .r{ font-size:10.5px; color:var(--soft); text-transform:uppercase; letter-spacing:.06em; } .fontcard .n{ font-size:24px; margin-top:6px; }
+  .toks{ display:flex; gap:16px; flex-wrap:wrap; }
+  .tok{ border:1px solid var(--line); border-radius:12px; padding:16px 18px; min-width:200px; } .tok .l{ font-weight:600; font-size:12.5px; margin-bottom:10px; }
+  .voice{ display:flex; gap:9px; flex-wrap:wrap; } .vtag{ border:1px solid var(--line); border-radius:100px; padding:8px 15px; font-weight:600; font-size:13px; }
+  .foot{ margin-top:44px; padding-top:18px; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--soft); }
+  .foot .a{ display:flex; align-items:center; gap:8px; } .foot svg{ width:20px; height:20px; }
+  .bar{ position:fixed; top:0; left:0; right:0; background:var(--ink); color:#fff; padding:10px 16px; display:flex; justify-content:center; gap:12px; z-index:9; }
+  .bar button{ background:var(--amber); color:var(--ink); border:none; border-radius:8px; padding:8px 18px; font-weight:700; font-size:13px; cursor:pointer; font-family:'Inter'; }
+  .bar span{ color:#cfd3da; font-size:12.5px; align-self:center; }
+</style></head><body>
+  <div class="bar noprint"><span>Use your browser's “Save as PDF” to export.</span><button onclick="window.print()">Download / Print PDF</button></div>
+  <div style="height:44px" class="noprint"></div>
+
+  <div class="page cover">
+    <div class="agency">${DOG}<b>2Labs<span>Sites</span></b></div>
+    <div class="eyebrow">Brand Guidelines</div>
+    ${logo ? `<div style="margin:6px 0 22px;">${logoBlock}</div>` : ''}
+    <h1>${name}</h1>
+    ${tagline ? `<div class="tag">${tagline.replace(/</g, '&lt;')}</div>` : ''}
+    <div class="meta">${domain ? domain + ' · ' : ''}Prepared ${today} · by 2Labs Sites</div>
+  </div>
+
+  <div class="page">
+    <div class="sec-eyebrow">01 — Identity</div><h2 class="sec">Logo</h2>
+    <p class="sec-desc">Primary logo and how it appears on light and dark backgrounds. Maintain clear space and never distort.</p>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;border:1px solid var(--line);border-radius:14px;padding:30px;display:flex;align-items:center;justify-content:center;background:#F6EDE1;">${logoBlock}</div>
+      <div style="flex:1;min-width:220px;border:1px solid var(--line);border-radius:14px;padding:30px;display:flex;align-items:center;justify-content:center;background:${(colors.neutral && colors.neutral[0] && colors.neutral[0].hex) || '#1F242E'};">${logo ? `<img src="${logo}" alt="" style="max-height:80px;max-width:260px;object-fit:contain;filter:brightness(0) invert(1);" />` : `<div style="font-family:'${heading}';font-weight:800;font-size:40px;color:#fff;">${name}</div>`}</div>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="sec-eyebrow">02 — Color</div><h2 class="sec">Color system</h2>
+    <p class="sec-desc">The full palette. All text/background pairings are checked for WCAG 2.2 AA contrast.</p>
+    <div class="grp">Core</div><div class="bg-row">${swatchCardsHTML(colors.core, 'Primary brand')}</div>
+    <div class="grp">Accents</div><div class="bg-row">${swatchCardsHTML(colors.accents, 'Highlights &amp; CTAs')}</div>
+    <div class="grp">Semantic</div><div class="bg-row">${swatchCardsHTML(colors.semantic, 'States &amp; feedback')}</div>
+    <div class="grp">Neutrals</div><div class="bg-row">${swatchCardsHTML(colors.neutral, 'Text, surfaces &amp; lines')}</div>
+  </div>
+
+  <div class="page">
+    <div class="sec-eyebrow">03 — Type</div><h2 class="sec">Typography</h2>
+    <p class="sec-desc">Type families and scale used across the site.</p>
+    <div class="fonts">
+      <div class="fontcard"><div class="r">Headings</div><div class="n" style="font-family:'${heading}',sans-serif;font-weight:700;">${heading}</div></div>
+      <div class="fontcard"><div class="r">Body</div><div class="n" style="font-family:'${body}',sans-serif;font-weight:500;">${body}</div></div>
+    </div>
+    <div class="specimen" style="font-family:'${heading}',sans-serif;">
+      <div class="sp"><div class="lab">H1 · ${sc.h1}</div><div style="font-size:${sc.h1}px;font-weight:700;">${name}</div></div>
+      <div class="sp"><div class="lab">H2 · ${sc.h2}</div><div style="font-size:${sc.h2}px;font-weight:700;">Section heading</div></div>
+      <div class="sp"><div class="lab">H3 · ${sc.h3}</div><div style="font-size:${sc.h3}px;font-weight:600;">Subsection heading</div></div>
+      <div class="sp"><div class="lab">Body · ${sc.body}</div><div style="font-size:${sc.body}px;font-weight:400;font-family:'${body}',sans-serif;">The quick brown fox jumps over the lazy dog.</div></div>
+      <div class="sp"><div class="lab">Small · ${sc.small}</div><div style="font-size:${sc.small}px;color:var(--soft);font-family:'${body}',sans-serif;">Captions and fine print.</div></div>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="sec-eyebrow">04 — System</div><h2 class="sec">Layout &amp; voice</h2>
+    <p class="sec-desc">Shape, spacing, and the tone that guides all written content.</p>
+    <div class="toks">
+      <div class="tok"><div class="l">Corner radius</div><div style="height:44px;background:${(colors.core && colors.core[0] && colors.core[0].hex) || '#F59F0A'};border-radius:${radius}px;"></div><div style="font-size:11.5px;color:var(--soft);margin-top:8px;">${radius}px</div></div>
+      <div class="tok"><div class="l">Spacing scale</div><div style="display:flex;align-items:flex-end;gap:6px;height:44px;">${spacing.map((s) => `<div style="width:${Math.max(4, s)}px;height:${Math.max(6, s)}px;background:${(colors.core && colors.core[0] && colors.core[0].hex) || '#F59F0A'};"></div>`).join('')}</div><div style="font-size:11.5px;color:var(--soft);margin-top:8px;">${spacing.join(' · ')}</div></div>
+    </div>
+    <div class="grp" style="margin-top:26px;">Voice &amp; tone</div>
+    <div class="voice">${voice.length ? voice.map((v) => `<span class="vtag">${(v || '').replace(/</g, '&lt;')}</span>`).join('') : '<span style="color:var(--soft);font-size:13px;">Not set.</span>'}</div>
+    <div class="foot"><div>© ${new Date().getFullYear()} ${name}. Brand guidelines.</div><div class="a">${DOG}<span>Generated by <b style="color:var(--ink);">2Labs Sites</b></span></div></div>
+  </div>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to download your brand guidelines.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
 
   // Delete flow — type the site name to confirm.
   const dm = $('deleteModal');

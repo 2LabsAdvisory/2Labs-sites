@@ -5,6 +5,8 @@
  */
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { upsertSite } = require('../lib/siteRegistry');
+const { setDraftFile } = require('../lib/draftStore');
+const { tokensFromBrand } = require('../lib/seedSite');
 
 module.exports = async function (context, req) {
   const email = await validateSessionEmail(getBearerToken(req));
@@ -19,6 +21,13 @@ module.exports = async function (context, req) {
   }
   try {
     const site = await upsertSite(email, input);
+    // When the brand system is saved, regenerate the site's tokens.css so brand
+    // edits (colors, fonts, type scale, radius, spacing, logo) actually reach
+    // the rendered site — not just the stored record.
+    if (site && site.slug && input.brief && input.brief.brand && input.brief.brand.colors) {
+      try { await setDraftFile(site.slug, 'src/styles/tokens.css', tokensFromBrand(input.brief.brand)); }
+      catch (e) { context.log.warn('[save-site] tokens regen failed: ' + e.message); }
+    }
     context.res = { status: 200, body: { status: 'ok', site } };
   } catch (err) {
     context.log.error(err);

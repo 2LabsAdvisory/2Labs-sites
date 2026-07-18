@@ -72,10 +72,12 @@ module.exports = async function (context, req) {
     const goalPage = pages.find((p) => /contact|donate|volunteer|sign|book|buy|register|get-started|quote/i.test(kebab(p.slug) + ' ' + p.title)) || pages[pages.length - 1];
     const goalRoute = routeFor(goalPage.slug);
 
+    const logoUrl = brand.logo && typeof brand.logo.url === 'string' ? brand.logo.url : '';
     const user = [
       `Organization: ${orgName}`,
       `Voice / tone: ${(brand.voice || []).join(', ') || 'clear, warm, credible'}`,
       brief.interpretation && brief.interpretation.archetype ? `Site type: ${brief.interpretation.archetype}` : '',
+      logoUrl ? `Brand logo image (use it as the wordmark in the header and footer): <img src="${logoUrl}" alt="${orgName} logo" /> — style with a sensible height (e.g. 32–40px), do not distort.` : '',
       `Primary CTA label: ${primaryCta}  → links to route ${goalRoute}`,
       '',
       'Navigation (use these EXACT routes, in this order):',
