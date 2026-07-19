@@ -179,7 +179,10 @@ module.exports = async function (context, req) {
       // Stream + finalMessage() so a large max_tokens can't hit an HTTP timeout.
       const stream = anthropic.messages.stream({
         model: 'claude-sonnet-5',
-        max_tokens: 16000,
+        // Generous ceiling so a legitimately large change (e.g. creating several
+        // full pages at once) isn't truncated. Only big edits use it; streaming +
+        // the async result-store polling cover the longer generation.
+        max_tokens: 32000,
         thinking: { type: 'disabled' },
         system: buildSystemPrompt(brand, org),
         tools: [EDIT_TOOL, APPLY_TOOL, DELETE_TOOL],
@@ -191,6 +194,13 @@ module.exports = async function (context, req) {
       throw new Error(`anthropic: ${e.message}`);
     }
     context.log(`[edit-site] anthropic ${Date.now() - tGen}ms, stop=${response.stop_reason}`);
+
+    // A max_tokens stop means the tool call was cut off mid-output — the files
+    // are incomplete/empty, so never ship a partial. Give actionable guidance
+    // instead of the cryptic "no file changes" error.
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error('That change was too large to build in one step. Try it in smaller batches — for example "create profile pages for the first 5 animals", then repeat for the rest.');
+    }
 
     const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && (b.name === 'edit_files' || b.name === 'apply_site_changes' || b.name === 'delete_pages'));
     if (!toolUse || !toolUse.input) throw new Error('The AI did not return any file changes. Try rephrasing.');
