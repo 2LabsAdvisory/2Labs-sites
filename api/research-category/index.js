@@ -15,6 +15,8 @@ const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { getSite, upsertSite } = require('../lib/siteRegistry');
 const { recordEvent, hashId } = require('../lib/feedbackStore');
+const { getFresh, putEntry, bumpUsage, archetypeKey } = require('../lib/kb');
+const { curate } = require('../lib/curator');
 
 const PLAYBOOK_TOOL = {
   name: 'submit_playbook',
@@ -78,6 +80,19 @@ module.exports = async function (context, req) {
     // Only the describe path has an archetype to research against; skip otherwise.
     if (!archetype) { context.res = { status: 200, body: { status: 'skipped', reason: 'no-archetype' } }; return; }
 
+    // RETRIEVE-OR-REFRESH: a fresh KB playbook for this archetype skips live
+    // research entirely (the efficiency path). The experts still adapt it.
+    const key = archetypeKey(archetype);
+    const fresh = await getFresh('playbook', key);
+    if (fresh && fresh.data) {
+      brief.research = { ...(brief.research || {}), category_playbook: fresh.data };
+      await upsertSite(email, { slug, brief });
+      await bumpUsage('playbook', key);
+      await recordEvent({ type: 'kb', stage: 'playbook', result: 'hit', site: slug, user: hashId(email), key, version: fresh.version });
+      context.res = { status: 200, body: { status: 'ok', cached: true, playbook: fresh.data } };
+      return;
+    }
+
     const content = brief.content || {};
     const facts = (interp.extracted_facts || []).filter((f) => f && f.label).map((f) => `${f.label}: ${f.value}`).join(' | ');
     const user = [
@@ -97,6 +112,11 @@ module.exports = async function (context, req) {
     const playbook = tool.input;
     brief.research = { ...(brief.research || {}), category_playbook: playbook };
     await upsertSite(email, { slug, brief });
+    // Curate the fresh research into the shared KB so the next build of this
+    // archetype gets the fast cache path.
+    const entry = await curate('playbook', key, playbook, { agent: 'research-category', archetype });
+    if (entry && !entry.rejected) await putEntry('playbook', key, entry);
+    await recordEvent({ type: 'kb', stage: 'playbook', result: 'refresh', site: slug, user: hashId(email), key });
     await recordEvent({ type: 'generate', stage: 'research-category', result: 'success', site: slug, user: hashId(email), archetype, sources: (playbook.sources || []).length });
 
     context.res = { status: 200, body: { status: 'ok', playbook } };

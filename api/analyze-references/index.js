@@ -13,6 +13,8 @@ const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { getSite, upsertSite } = require('../lib/siteRegistry');
 const { recordEvent, hashId } = require('../lib/feedbackStore');
+const { getFresh, putEntry, bumpUsage, refKey } = require('../lib/kb');
+const { curate } = require('../lib/curator');
 
 const INSPIRATION_TOOL = {
   name: 'submit_inspiration',
@@ -83,6 +85,19 @@ module.exports = async function (context, req) {
     // Nothing to analyze without references; skip cleanly.
     if (!refs.length) { context.res = { status: 200, body: { status: 'skipped', reason: 'no-references' } }; return; }
 
+    // RETRIEVE-OR-REFRESH: a fresh cached analysis of this exact URL set skips
+    // re-fetching the references.
+    const key = refKey(refs);
+    const fresh = await getFresh('reference', key);
+    if (fresh && fresh.data) {
+      brief.research = { ...(brief.research || {}), inspiration: fresh.data, inspiration_sources: fresh.sources || [] };
+      await upsertSite(email, { slug, brief });
+      await bumpUsage('reference', key);
+      await recordEvent({ type: 'kb', stage: 'reference', result: 'hit', site: slug, user: hashId(email), key, version: fresh.version });
+      context.res = { status: 200, body: { status: 'ok', cached: true, inspiration: fresh.data } };
+      return;
+    }
+
     // The reference URLs must appear in the conversation for web_fetch to reach them.
     const user = [
       'Reference sites the client admires (fetch each; patterns only, never copy):',
@@ -99,6 +114,10 @@ module.exports = async function (context, req) {
     const out = tool.input;
     brief.research = { ...(brief.research || {}), inspiration: out.inspiration, inspiration_sources: out.sources || [] };
     await upsertSite(email, { slug, brief });
+    // Cache the abstracted, IP-safe direction for this URL set (Curator-gated).
+    const entry = await curate('reference', key, { ...out.inspiration, sources: out.sources || [] }, { agent: 'analyze-references', urls: refs.map((r) => r.url) });
+    if (entry && !entry.rejected) await putEntry('reference', key, entry);
+    await recordEvent({ type: 'kb', stage: 'reference', result: 'refresh', site: slug, user: hashId(email), key });
     await recordEvent({ type: 'generate', stage: 'analyze-references', result: 'success', site: slug, user: hashId(email), refs: refs.length, skipped: (out.skipped || []).length });
 
     context.res = { status: 200, body: { status: 'ok', inspiration: out.inspiration, skipped: out.skipped || [] } };

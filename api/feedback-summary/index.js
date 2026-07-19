@@ -24,6 +24,7 @@ module.exports = async function (context, req) {
   const events = await readEvents({ days });
   const edits = events.filter((e) => e.type === 'edit');
   const gens = events.filter((e) => e.type === 'generate');
+  const kb = events.filter((e) => e.type === 'kb');
   const editOk = edits.filter((e) => e.result === 'success');
   const editErr = edits.filter((e) => e.result === 'error');
 
@@ -52,6 +53,18 @@ module.exports = async function (context, req) {
       // Plan fell back to the deterministic sitemap = the model call failed.
       plan_fallback_rate: (() => { const p = gens.filter((x) => x.stage === 'plan' && x.result === 'success'); return rate(p.filter((x) => x.used_fallback).length, p.length); })(),
       top_generation_errors: tally(gens.filter((x) => x.result === 'error'), (e) => `${e.stage}: ${e.error}`).slice(0, 10),
+    },
+    // Knowledge Base — the efficiency win: a high hit rate = builds skipping
+    // live research. Broken out per collection.
+    knowledge_base: {
+      lookups: kb.length,
+      hits: kb.filter((e) => e.result === 'hit').length,
+      refreshes: kb.filter((e) => e.result === 'refresh').length,
+      hit_rate: rate(kb.filter((e) => e.result === 'hit').length, kb.length),
+      by_kind: ['playbook', 'reference'].map((k) => {
+        const g = kb.filter((e) => e.stage === k);
+        return { kind: k, hits: g.filter((e) => e.result === 'hit').length, refreshes: g.filter((e) => e.result === 'refresh').length, hit_rate: rate(g.filter((e) => e.result === 'hit').length, g.length) };
+      }),
     },
   };
 
