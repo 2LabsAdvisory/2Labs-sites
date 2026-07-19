@@ -71,6 +71,7 @@ function tokensFromBrand(brand) {
   --secondary-contrast: ${bestTextOn(secondary)};
   --accent: ${accent};
   --accent-contrast: ${bestTextOn(accent)};
+  --ink-contrast: ${bestTextOn(ink)};
   --success: #2F8558;
   --radius: ${radius}px;
   --shadow: 0 1px 2px rgba(16,24,40,0.04), 0 10px 28px rgba(16,24,40,0.08);
@@ -87,13 +88,24 @@ function tokensFromBrand(brand) {
   --color-primary: var(--primary); --primary-tint-strong: var(--primary-soft);
 }
 *, *::before, *::after { box-sizing: border-box; }
+/* Body sets the default text colour; headings/paragraphs INHERIT it so that a
+   section which sets its own color (e.g. a coloured band) cascades to all its
+   text. Never hard-set colour on h1-4/p/li here or coloured bands go unreadable. */
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: var(--fs-body); -webkit-font-smoothing: antialiased; }
-h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; color: var(--ink); }
+h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: -0.01em; margin: 0; color: inherit; }
 h1 { font-size: var(--fs-h1); } h2 { font-size: var(--fs-h2); } h3 { font-size: var(--fs-h3); } h4 { font-size: var(--fs-h4); }
 small { font-size: var(--fs-small); }
-p, li { color: var(--ink); }
+p, li { color: inherit; }
 a { color: inherit; }
 img { max-width: 100%; }
+/* Colour-band helpers — set background + a guaranteed-contrasting text colour
+   together. Put one class on any coloured section and ALL its text is legible. */
+.band-primary { background: var(--primary); color: var(--primary-contrast); }
+.band-secondary { background: var(--secondary); color: var(--secondary-contrast); }
+.band-accent { background: var(--accent); color: var(--accent-contrast); }
+.band-dark { background: var(--ink); color: var(--ink-contrast); }
+.band-soft { background: var(--primary-soft); color: var(--ink); }
+.band-surface { background: var(--surface); color: var(--ink); }
 `;
 }
 

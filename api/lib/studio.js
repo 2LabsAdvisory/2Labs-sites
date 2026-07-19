@@ -16,16 +16,18 @@ function brandSummary(brand) {
   const t = (brand && brand.typography) || {};
   return [
     'DESIGN TOKENS — these CSS variables are ALREADY defined in tokens.css. Use ONLY these; do NOT invent new variable names and do NOT declare your own :root variables:',
-    '  Surfaces/text: --bg (page bg, light), --surface (#fff cards), --surface-2 (subtle), --ink (body text, dark), --ink-soft (secondary text), --border',
+    '  Surfaces/text: --bg (page bg, light), --surface (#fff cards), --surface-2 (subtle), --ink (body text, dark), --ink-soft (secondary text), --ink-contrast (light text that sits ON --ink), --border',
     '  Brand: --primary, --primary-dark, --primary-soft (light wash for section bgs), --primary-contrast (text ON primary), --secondary, --secondary-contrast, --accent, --accent-contrast, --success',
     '  Type/shape: --font-heading, --font-body, --radius, --shadow',
     `Fonts — headings ${t.heading || 'sans-serif'}, body ${t.body || 'sans-serif'}. Voice — ${(brand && brand.voice || []).join(', ') || 'clear, warm, credible'}.`,
     '',
-    'READABILITY RULES (critical — the site must never be unreadable):',
-    '- Every section MUST set an explicit background AND a contrasting text colour. Never rely on defaults.',
-    '- On a colored background use its contrast token: background:var(--primary) → color:var(--primary-contrast); var(--secondary)→var(--secondary-contrast); var(--accent)→var(--accent-contrast).',
-    '- On light backgrounds (--bg, --surface, --surface-2, --primary-soft) use color:var(--ink) for text and var(--ink-soft) for secondary text — NEVER white text on a light background.',
-    '- Give the page visual rhythm by alternating section backgrounds among --bg, --surface, --primary-soft, and one bold band using --primary (with --primary-contrast text). Use --primary/--accent for buttons, links, and highlights so the brand colour is clearly present.',
+    'READABILITY — NON-NEGOTIABLE. Illegible text (dark-on-dark, dark-on-colour, light-on-light) is the #1 failure. Follow these exactly:',
+    '- Headings and paragraphs INHERIT their colour from the section. So set colour ONCE on each <section> and everything inside is legible — but if you set a coloured/dark background you MUST also set a matching text colour, or the text stays dark and vanishes.',
+    '- EASIEST + SAFEST: put a band helper class on any coloured section and it sets background + guaranteed-contrasting text together — `band-primary`, `band-secondary`, `band-accent`, `band-dark` (dark ink bg, light text), `band-soft` (light primary wash), `band-surface`. Prefer these over hand-setting colours.',
+    '- If you set a background by hand instead: background:var(--primary) → color:var(--primary-contrast); var(--secondary)→var(--secondary-contrast); var(--accent)→var(--accent-contrast); a dark/ink background → color:var(--ink-contrast). On light backgrounds (--bg,--surface,--surface-2,--primary-soft) → color:var(--ink) (secondary text var(--ink-soft)). NEVER dark-on-dark, dark-on-colour, or white-on-light.',
+    '- TEXT OVER A PHOTO: photos are visually busy and often dark. Never place raw text on a bare photo. Put the text in a container with a strong scrim — e.g. a linear-gradient overlay from the brand colour or rgba(0,0,0,.55) over the image — and use a light text colour (var(--primary-contrast) or #fff). The text must stay readable over the lightest AND darkest part of the photo.',
+    '- Decorative oversized/watermark text behind content must be very low contrast AND must never sit behind body copy you need to read.',
+    '- Give the page rhythm by alternating section backgrounds among --bg, --surface, band-soft, and one bold band-primary (or band-dark). Use --primary/--accent for buttons, links, and highlights so the brand colour is clearly present.',
   ].join('\n');
 }
 
