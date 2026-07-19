@@ -273,10 +273,12 @@ module.exports = async function (context, req) {
     //     files that still render, we ship the reviewed version. Non-fatal: any
     //     QA error keeps the original (already-rendered) edit.
     let qaOutcome = 'skipped';
+    let qaUsage = {};
     if (files.length > 0) {
       try {
         const tokensCss = await effectiveContent('src/styles/tokens.css', site).catch(() => null);
-        const review = await qaReview(anthropic, { files, tokensCss, prompt });
+        const { input: review, usage: qu } = await qaReview(anthropic, { files, tokensCss, prompt });
+        qaUsage = qu || {};
         if (review && review.approved === true) qaOutcome = 'approved';
         else if (review && review.approved === false && Array.isArray(review.files) && review.files.length) {
           const corrected = review.files.filter((f) => f && isEditablePath(f.path) && typeof f.content === 'string' && f.content.trim().length >= 10);
@@ -316,14 +318,14 @@ module.exports = async function (context, req) {
       throw new Error(`draft-save: ${e.message}`);
     }
 
-    // 6. Meter this edit against the user's monthly AI credits (1 edit = 1
-    //    credit; token/cost detail kept underneath). Never fail the edit on a
-    //    metering error — the work is already saved.
+    // 6. Meter this edit's AI spend — the main generation PLUS the QA review
+    //    pass — so the dollar cost reflects the whole edit. Never fail the edit
+    //    on a metering error — the work is already saved.
     let usage = null;
     try {
-      usage = await recordEdit(sessionEmail, response.usage || {});
+      usage = await recordEdit(sessionEmail, addUsage(response.usage || {}, qaUsage));
     } catch (e) {
-      context.log.warn('[edit-site] usage record failed:', e.message);
+      context.log('[edit-site] usage record failed: ' + e.message);
     }
 
     const okBody = {
@@ -562,7 +564,14 @@ async function qaReview(anthropic, { files, tokensCss, prompt }) {
   });
   const resp = await stream.finalMessage();
   const t = (resp.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_review');
-  return t ? t.input : null;
+  return { input: t ? t.input : null, usage: resp.usage || {} };
+}
+
+// Sum two Anthropic usage objects so an edit's cost includes its QA pass.
+function addUsage(a, b) {
+  const out = {};
+  for (const k of ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens']) out[k] = (a[k] || 0) + (b[k] || 0);
+  return out;
 }
 
 // Exposed for offline unit tests (api/tests/index.test.js).

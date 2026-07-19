@@ -31,6 +31,13 @@ function monthlyCredits() {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MONTHLY_CREDITS;
 }
 
+// The meter now shows AI spend against a monthly USD budget (configurable).
+const DEFAULT_MONTHLY_BUDGET_USD = 25;
+function monthlyBudget() {
+  const n = Number(process.env.MONTHLY_BUDGET_USD);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MONTHLY_BUDGET_USD;
+}
+
 function rates(at = Date.now()) {
   return at < PRICING.intro.until ? PRICING.intro : PRICING.standard;
 }
@@ -140,7 +147,10 @@ async function getUsage(email) {
       cacheRead: p.cacheReadTokens,
       cacheCreation: p.cacheCreationTokens,
     },
+    // Dollar view of AI spend this month (from real token counts).
     estCostUsd: Math.round(p.estCostUsd * 100) / 100,
+    budgetUsd: monthlyBudget(),
+    avgCostPerEditUsd: p.edits ? Math.round((p.estCostUsd / p.edits) * 100) / 100 : 0,
   };
 }
 
