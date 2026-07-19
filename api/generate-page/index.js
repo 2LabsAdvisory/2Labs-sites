@@ -13,6 +13,7 @@ const { setDraftFile } = require('../lib/draftStore');
 const { brandSummary, routeFor, pageFileFor } = require('../lib/studio');
 const { fetchStockImages } = require('../lib/images');
 const { recordEvent, hashId } = require('../lib/feedbackStore');
+const { withAddendum } = require('../lib/learningStore');
 
 const PAGE_TOOL = {
   name: 'submit_page',
@@ -123,9 +124,11 @@ module.exports = async function (context, req) {
     ].join('\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // Inject any human-approved learning-loop improvements for this agent.
+    const systemFinal = await withAddendum(system, 'prompt:generate-page');
     const stream = anthropic.messages.stream({
       model: 'claude-sonnet-5', max_tokens: 12000, thinking: { type: 'disabled' },
-      system, tools: [PAGE_TOOL], tool_choice: { type: 'tool', name: 'submit_page' },
+      system: systemFinal, tools: [PAGE_TOOL], tool_choice: { type: 'tool', name: 'submit_page' },
       messages: [{ role: 'user', content: user }],
     });
     const response = await stream.finalMessage();

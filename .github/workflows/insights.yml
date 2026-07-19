@@ -1,0 +1,24 @@
+name: Weekly Insights (learning loop)
+
+# The learning loop runs OFF the build path. SWA managed functions are
+# HTTP-trigger only, so we drive the Insights agent on a cron from Actions.
+# Requires repo secrets: SITE_BASE_URL (e.g. https://red-hill-0fb2bdf10.7.azurestaticapps.net)
+# and INTERNAL_API_KEY (matching the SWA app setting).
+on:
+  schedule:
+    - cron: '17 9 * * 1' # Mondays 09:17 UTC
+  workflow_dispatch: {}
+
+jobs:
+  run-insights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the Insights agent
+        run: |
+          curl -fsS -X POST "${SITE_BASE_URL}/api/run-insights?days=30" \
+            -H "x-internal-key: ${INTERNAL_API_KEY}" \
+            -H "content-type: application/json" \
+            -d '{}' | head -c 2000
+        env:
+          SITE_BASE_URL: ${{ secrets.SITE_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}

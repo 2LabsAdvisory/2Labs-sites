@@ -1,0 +1,145 @@
+---
+// insights.astro — the learning-loop review queue (2Labs internal). Lists the
+// Insights agent's proposals; a human approves/rejects each. Approving applies
+// it as a versioned prompt/playbook addendum the agents inject on the next build.
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<script is:inline>if(!localStorage.getItem('2labs_sites_token'))location.replace('/login');</script>
+<title>Learning loop — 2Labs Sites</title>
+<link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style is:global>
+  :root{ --amber:#F59F0A; --amber-dark:#D9870A; --ink:#1F242E; --ink-soft:#676F7E; --bg:#F8F7F6; --surface:#fff; --border:#E5E0DC; --green:#2F8558; --green-bg:#EAF6EF; --violet:#6D5AE0; --violet-bg:#F1EFFC; --red:#C0392B; --radius:14px; --shadow:0 1px 2px rgba(31,36,46,.04),0 10px 28px rgba(31,36,46,.06); }
+  *{box-sizing:border-box;} body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3{ font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-.01em; } a{ color:inherit; }
+  .app{ max-width:920px; margin:0 auto; padding:0 24px 64px; }
+  .topbar{ display:flex; align-items:center; gap:14px; padding:20px 0; margin-bottom:14px; border-bottom:1px solid var(--border); }
+  .back{ width:34px;height:34px;border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex;align-items:center;justify-content:center; color:var(--ink-soft); text-decoration:none; }
+  .topbar h1{ font-size:19px; margin:0; } .topbar .sub{ font-size:12.5px; color:var(--ink-soft); }
+  .bar{ display:flex; align-items:center; gap:10px; margin:16px 0; flex-wrap:wrap; }
+  .btn{ border:none; border-radius:10px; padding:9px 16px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; }
+  .btn-primary{ background:var(--amber); color:var(--ink); } .btn-primary:hover{ background:var(--amber-dark); } .btn-primary:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn-ghost{ background:var(--surface); color:var(--ink); border:1px solid var(--border); }
+  .seg{ display:inline-flex; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .seg button{ background:var(--surface); border:none; padding:8px 14px; font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; }
+  .seg button.on{ background:var(--amber-tint-strong,#FFFBEB); color:var(--ink); }
+  .muted{ color:var(--ink-soft); font-size:13px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 20px; margin-bottom:14px; }
+  .row1{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .tag{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600; background:var(--violet-bg); color:var(--violet); border:1px solid #E1DCF7; padding:3px 9px; border-radius:8px; }
+  .risk{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:3px 8px; border-radius:100px; }
+  .risk.low{ background:var(--green-bg); color:var(--green); } .risk.medium{ background:#FFF6E6; color:var(--amber-dark); } .risk.high{ background:#FBE9E7; color:var(--red); }
+  .status{ margin-left:auto; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); }
+  .status.applied{ color:var(--green); } .status.rejected{ color:var(--red); }
+  .change{ font-size:14px; line-height:1.5; margin:0 0 8px; }
+  .evidence{ font-size:12.5px; color:var(--ink-soft); background:var(--bg); border-radius:8px; padding:8px 11px; margin-bottom:12px; }
+  .change-edit{ width:100%; border:1px solid var(--border); border-radius:9px; padding:9px 11px; font-family:'Inter',sans-serif; font-size:13px; min-height:60px; background:var(--bg); color:var(--ink); margin-bottom:10px; display:none; }
+  .actions{ display:flex; gap:8px; }
+  .btn-approve{ background:var(--green); color:#fff; } .btn-reject{ background:var(--surface); color:var(--red); border:1px solid #EBC9C4; }
+  .btn-edit{ background:var(--surface); color:var(--ink-soft); border:1px solid var(--border); }
+  .empty{ text-align:center; padding:48px 20px; color:var(--ink-soft); }
+  .summary{ background:var(--violet-bg); border:1px solid #E1DCF7; border-radius:12px; padding:12px 15px; font-size:12.5px; color:var(--ink); margin-bottom:16px; display:none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <a class="back" href="/dashboard" aria-label="Back to dashboard">←</a>
+    <div><h1>Learning loop</h1><div class="sub">Review the Insights agent's proposals. Approving applies a versioned, reversible improvement.</div></div>
+  </div>
+
+  <div class="bar">
+    <button class="btn btn-primary" id="runBtn">▶ Run insights now</button>
+    <div class="seg" id="filter">
+      <button data-status="pending" class="on">Pending</button>
+      <button data-status="applied">Applied</button>
+      <button data-status="rejected">Rejected</button>
+      <button data-status="">All</button>
+    </div>
+    <span class="muted" id="count"></span>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</div>
+
+<script>
+  const TOKEN_KEY = '2labs_sites_token';
+  const authToken = () => localStorage.getItem(TOKEN_KEY);
+  const signOut = () => { localStorage.removeItem(TOKEN_KEY); location.replace('/login'); };
+  const api = (path, opts = {}) => fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-2labs-session': authToken() || '', 'Authorization': 'Bearer ' + (authToken() || ''), ...(opts.headers || {}) } });
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let filter = 'pending';
+
+  async function load() {
+    const res = await api('/api/insights' + (filter ? '?status=' + filter : ''));
+    if (res.status === 401) return signOut();
+    const data = await res.json().catch(() => ({}));
+    const list = data.proposals || [];
+    $('count').textContent = list.length + (filter ? ' ' + filter : '') + ' proposal' + (list.length === 1 ? '' : 's');
+    if (!list.length) { $('list').innerHTML = '<div class="empty">No ' + (filter || '') + ' proposals. Run insights to generate some from recent build &amp; edit activity.</div>'; return; }
+    $('list').innerHTML = list.map(renderCard).join('');
+    list.forEach((p) => {
+      if (p.status !== 'pending') return;
+      $('edit-' + p.id) && $('edit-' + p.id).addEventListener('click', () => { const t = $('ta-' + p.id); t.style.display = t.style.display === 'block' ? 'none' : 'block'; });
+      $('approve-' + p.id).addEventListener('click', () => decide(p.id, 'approve'));
+      $('reject-' + p.id).addEventListener('click', () => decide(p.id, 'reject'));
+    });
+  }
+
+  function renderCard(p) {
+    const pending = p.status === 'pending';
+    const risk = (p.risk || 'medium').toLowerCase();
+    return '<div class="card">' +
+      '<div class="row1"><span class="tag">' + esc(p.target) + '</span><span class="risk ' + risk + '">' + esc(risk) + ' risk</span>' +
+      '<span class="status ' + esc(p.status) + '">' + esc(p.status) + (p.applied_version ? ' · v' + p.applied_version : '') + '</span></div>' +
+      '<p class="change">' + esc(p.change) + '</p>' +
+      (p.evidence ? '<div class="evidence">📊 ' + esc(p.evidence) + '</div>' : '') +
+      (pending ? (
+        '<textarea class="change-edit" id="ta-' + p.id + '" style="display:none;">' + esc(p.change) + '</textarea>' +
+        '<div class="actions">' +
+        '<button class="btn btn-approve" id="approve-' + p.id + '">Approve &amp; apply</button>' +
+        '<button class="btn btn-reject" id="reject-' + p.id + '">Reject</button>' +
+        '<button class="btn btn-edit" id="edit-' + p.id + '">Edit text</button>' +
+        '</div>'
+      ) : '') +
+      '</div>';
+  }
+
+  async function decide(id, decision) {
+    const ta = $('ta-' + id);
+    const body = { id, decision };
+    if (decision === 'approve' && ta && ta.style.display === 'block' && ta.value.trim()) body.edit = ta.value.trim();
+    $('approve-' + id).disabled = true; $('reject-' + id).disabled = true;
+    const res = await api('/api/insights-decide', { method: 'POST', body: JSON.stringify(body) });
+    if (res.status === 401) return signOut();
+    await load();
+  }
+
+  $('runBtn').addEventListener('click', async () => {
+    const btn = $('runBtn'); btn.disabled = true; btn.textContent = 'Analyzing recent activity…';
+    try {
+      const res = await api('/api/run-insights?days=30', { method: 'POST', body: '{}' });
+      if (res.status === 401) return signOut();
+      const data = await res.json().catch(() => ({}));
+      if (data.period_summary) { $('summary').style.display = 'block'; $('summary').textContent = '◈ ' + data.period_summary; }
+      filter = 'pending'; setFilter();
+      await load();
+    } catch (e) {}
+    btn.disabled = false; btn.textContent = '▶ Run insights now';
+  });
+
+  function setFilter() { document.querySelectorAll('#filter button').forEach((b) => b.classList.toggle('on', (b.dataset.status || '') === filter)); }
+  document.querySelectorAll('#filter button').forEach((b) => b.addEventListener('click', () => { filter = b.dataset.status || ''; setFilter(); load(); }));
+
+  load();
+</script>
+</body>
+</html>

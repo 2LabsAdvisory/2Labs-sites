@@ -17,6 +17,7 @@ const { getSite, upsertSite } = require('../lib/siteRegistry');
 const { recordEvent, hashId } = require('../lib/feedbackStore');
 const { getFresh, putEntry, bumpUsage, archetypeKey } = require('../lib/kb');
 const { curate } = require('../lib/curator');
+const { withAddendum } = require('../lib/learningStore');
 
 const PLAYBOOK_TOOL = {
   name: 'submit_playbook',
@@ -105,7 +106,11 @@ module.exports = async function (context, req) {
     ].filter(Boolean).join('\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await runResearch(anthropic, systemPrompt(), user);
+    // Inject human-approved learning: this agent's addendum + any per-archetype
+    // playbook learning approved for this specific category.
+    let system = await withAddendum(systemPrompt(), 'prompt:research-category');
+    system = await withAddendum(system, 'kb_playbook:' + key);
+    const response = await runResearch(anthropic, system, user);
     const tool = ((response && response.content) || []).find((c) => c.type === 'tool_use' && c.name === 'submit_playbook');
     if (!tool || !tool.input || !Array.isArray(tool.input.must_have_sections)) throw new Error('No playbook was produced.');
 
