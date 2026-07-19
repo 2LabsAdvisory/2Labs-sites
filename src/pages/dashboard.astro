@@ -30,7 +30,8 @@ import brand from '../../site-config/brand.json';
   .topbar-right{ display:flex; align-items:center; gap:12px; }
   .userpill{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); padding:6px 14px 6px 6px; border-radius:100px; box-shadow:var(--shadow); font-size:13px; }
   .avatar{ width:26px;height:26px;border-radius:50%; background:var(--amber); display:flex;align-items:center;justify-content:center; color:var(--ink);font-size:11px;font-weight:700; }
-  .icon-btn{ border:1px solid var(--border); background:var(--surface); border-radius:9px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; }
+  .icon-btn{ border:1px solid var(--border); background:var(--surface); border-radius:9px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; }
+  a.icon-btn:hover{ border-color:var(--ink-soft); }
   .icon-btn:hover{ border-color:var(--ink-soft); }
   .credits{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:100px; padding:7px 14px; box-shadow:var(--shadow); }
   .credits-bar{ width:56px; height:6px; border-radius:100px; background:#EDE8E4; overflow:hidden; }
@@ -98,6 +99,7 @@ import brand from '../../site-config/brand.json';
         <div class="credits-bar"><span class="credits-fill" id="creditsFill"></span></div>
         <span class="credits-label" id="creditsLabel">— / —</span>
       </div>
+      <a class="icon-btn" href="/insights" title="Learning loop — review AI improvement proposals">◈ Learning</a>
       <div class="userpill"><span class="avatar" id="userAvatar">·</span> <span id="userEmail">…</span></div>
       <button class="icon-btn" id="signOut">Sign out</button>
     </div>
