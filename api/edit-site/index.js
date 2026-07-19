@@ -212,7 +212,10 @@ module.exports = async function (context, req) {
     let files = [];
     let deletions = [];
     if (toolUse.name === 'edit_files') {
-      files = await applyTargetedEdits(toolUse.input.edits, site);
+      // Guard the empty case here so we can surface WHY (the model's summary)
+      // instead of the cryptic "No edits were produced".
+      const rawEdits = Array.isArray(toolUse.input.edits) ? toolUse.input.edits : [];
+      files = rawEdits.length ? await applyTargetedEdits(rawEdits, site) : [];
     } else if (toolUse.name === 'delete_pages') {
       deletions = (Array.isArray(toolUse.input.delete) ? toolUse.input.delete : []).filter(Boolean);
       for (const p of deletions) if (!isEditablePath(p)) throw new Error(`Not allowed to delete "${p}".`);
@@ -221,7 +224,14 @@ module.exports = async function (context, req) {
     } else {
       files = Array.isArray(toolUse.input.files) ? toolUse.input.files : [];
     }
-    if (files.length === 0 && deletions.length === 0) throw new Error('No file changes were produced.');
+    if (files.length === 0 && deletions.length === 0) {
+      // The model called a tool but produced nothing. If it explained why in the
+      // summary, surface that — it's far more useful than a generic error.
+      const why = String(summary || '').trim();
+      throw new Error(why
+        ? `Couldn't make that change: ${why}`
+        : "The AI couldn't produce that change. Try being specific about the page and what to change — e.g. \"on adoptable-animals.astro, wrap each animal card in a link to its profile page\".");
+    }
     const deletedSet = new Set(deletions);
 
     // 3. Validate every written path is inside the client site (never app/API).
@@ -420,8 +430,21 @@ async function listSitePages(site) {
   return [...set].filter((p) => !PROTECTED.has(p) && !deleted.has(p));
 }
 
+// Route a page file resolves to, e.g. src/pages/adopt/rex.astro -> /adopt/rex.
+function routeFromPagePath(p) {
+  if (!p.startsWith('src/pages/') || !p.endsWith('.astro')) return null;
+  const rel = p.slice('src/pages/'.length, -'.astro'.length);
+  const route = '/' + rel.replace(/\/?index$/, '');
+  return route === '' ? '/' : route;
+}
+
 function buildUserMessage(prompt, contextFiles, attachments = []) {
-  const parts = ['Here is the current site (each file with its full current content):', ''];
+  // An explicit route map so linking tasks ("link X to its page") are easy — the
+  // model can see exactly which pages exist and where they live.
+  const routes = Object.keys(contextFiles).map(routeFromPagePath).filter(Boolean).sort();
+  const parts = [];
+  if (routes.length) parts.push('SITE PAGES (existing routes you can link to): ' + routes.join(', '), '');
+  parts.push('Here is the current site (each file with its full current content):', '');
   for (const [p, content] of Object.entries(contextFiles)) {
     parts.push(`FILE: ${p}`, '```astro', content, '```', '');
   }
@@ -446,7 +469,8 @@ function buildUserMessage(prompt, contextFiles, attachments = []) {
   parts.push(
     `Request: ${prompt || '(no text — act on the attached file(s) per their intent)'}`,
     '',
-    'For a localized change, call edit_files with targeted old_string→new_string replacements. For a new page or large rewrite, call apply_site_changes with complete file contents.'
+    'For a localized change, call edit_files with targeted old_string→new_string replacements. For a new page or large rewrite, call apply_site_changes with complete file contents.',
+    'ALWAYS make a concrete change. If the request can only be partly done — e.g. some list items have a matching page to link and others do not — do the part you CAN (link the ones that exist), and note what you skipped and why in the summary. If items are rendered from a data array, edit the template/map so each item links to its route. Never return an empty edit; if you truly cannot proceed, still explain exactly what is missing in the summary.'
   );
   return parts.join('\n');
 }
