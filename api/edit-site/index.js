@@ -23,6 +23,7 @@ const { recordEdit } = require('../lib/usageStore');
 const { getAsset } = require('../lib/assetStore');
 const { putResult } = require('../lib/editResultStore');
 const { recordEvent, hashId } = require('../lib/feedbackStore');
+const { qualityBar, qaChecklist } = require('../lib/standards');
 const { renderDraft } = require('../lib/renderDraft');
 const { siteRoot, brand, org, DEFAULT_SITE } = require('../lib/siteConfig');
 
@@ -246,6 +247,38 @@ module.exports = async function (context, req) {
     }
     context.log(`[edit-site] render ${Date.now() - tRender}ms (primary=${primary}, files=${files.length})`);
 
+    // 4b. EXPERT QA REVIEW — hold this update to the same bar as generation.
+    //     An adversarial reviewer checks the changed files (contrast, brand
+    //     tokens, accessibility, validity, quality); if it returns corrected
+    //     files that still render, we ship the reviewed version. Non-fatal: any
+    //     QA error keeps the original (already-rendered) edit.
+    let qaOutcome = 'skipped';
+    if (files.length > 0) {
+      try {
+        const tokensCss = await effectiveContent('src/styles/tokens.css', site).catch(() => null);
+        const review = await qaReview(anthropic, { files, tokensCss, prompt });
+        if (review && review.approved === true) qaOutcome = 'approved';
+        else if (review && review.approved === false && Array.isArray(review.files) && review.files.length) {
+          const corrected = review.files.filter((f) => f && isEditablePath(f.path) && typeof f.content === 'string' && f.content.trim().length >= 10);
+          if (corrected.length) {
+            const byPath = new Map(files.map((f) => [f.path, f]));
+            for (const c of corrected) byPath.set(c.path, c);
+            const merged = [...byPath.values()];
+            const overlay2 = { ...overlay };
+            for (const f of merged) overlay2[f.path] = f.content;
+            const primaryFile2 = merged.find((f) => f.path === primary);
+            const primaryContent2 = primaryFile2 ? primaryFile2.content : primaryContent;
+            const html2 = await renderDraft(primary, primaryContent2, overlay2, site); // must still render
+            files = merged; html = html2; qaOutcome = 'fixed';
+          }
+        }
+      } catch (e) {
+        context.log('[edit-site] QA review skipped: ' + (e && e.stack || e));
+        qaOutcome = 'error';
+      }
+      context.log(`[edit-site] QA ${qaOutcome}`);
+    }
+
     // 5. Snapshot the whole draft state for one-level undo, then save edits and
     //    apply deletions. A page that exists on disk gets a tombstone (so publish
     //    removes it from the repo); a draft-only page is just dropped. Undo works
@@ -292,7 +325,7 @@ module.exports = async function (context, req) {
       type: 'edit', result: 'success', site, user: hashId(sessionEmail),
       tool: toolUse.name, targets: files.map((f) => f.path).concat(deletions),
       prompt: String(prompt || '').slice(0, 400), had_attachment: attachments.length > 0,
-      duration_ms: Date.now() - evStart,
+      qa: qaOutcome, duration_ms: Date.now() - evStart,
     });
     context.res = { status: 200, body: okBody };
   } catch (err) {
@@ -439,15 +472,11 @@ function buildSystemPrompt(brand, org) {
     `Brand voice: ${brand.voice}`,
     `Mission: ${org.mission}`,
     `Primary CTA: "${org.primaryCta}". Secondary: "${org.secondaryCta}".`,
+    `Heading font: var(--font-heading) (${brand.fonts.heading}). Body font: var(--font-body) (${brand.fonts.body}).`,
     '',
-    'Brand tokens are global CSS variables — reuse them for a consistent look:',
-    '  --bg, --surface, --ink, --ink-soft, --border, --primary, --primary-dark, --primary-tint-strong',
-    `  Heading font: var(--font-heading) (${brand.fonts.heading}). Body font: var(--font-body) (${brand.fonts.body}).`,
-    '',
-    'Work to a top studio standard:',
-    '- CONTENT: sharp, benefit-led copy in the brand voice; scannable structure; a strong, specific headline; concrete CTAs; no filler.',
-    '- UX: clear visual hierarchy, generous spacing, responsive layout, and accessibility (semantic HTML, one <h1> per page, alt text on images, labelled controls, good contrast).',
-    '- SEO: a unique, descriptive title and meta description for every page (passed as the BaseLayout title/description props), sensible heading order, and descriptive link text.',
+    // Hold every EDIT to the same expert quality bar as new-site generation.
+    qualityBar(),
+    '- Before returning, self-review your change against this bar — especially contrast (no dark-on-dark / dark-on-colour) and brand-token usage — and fix any issue in the same output. A separate QA reviewer will re-check it.',
     '',
     'Technical rules (the site is Astro):',
     '- Every page imports BaseLayout (with the correct relative path) and passes title + description props.',
@@ -466,6 +495,40 @@ function buildSystemPrompt(brand, org) {
     '- To DELETE a page, call delete_pages with the page file path(s) in `delete`, and use `edits` to remove its navigation link(s)/references (e.g. remove the <a> from Header.astro). Never blank a file to "delete" it — use delete_pages.',
     '- When replacing an image, edit the exact <img …> (or CSS url(…)) to point at the provided hosted URL.',
   ].join('\n');
+}
+
+// Expert QA reviewer — the same standards gate new-site generation is held to,
+// now applied to every edit. Reviews only the changed files and returns either
+// approval or corrected complete files. Forced structured output.
+const QA_TOOL = {
+  name: 'submit_review',
+  description: 'Return the QA review of the changed files.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      approved: { type: 'boolean', description: 'true if the change fully passes with no fixes needed.' },
+      issues: { type: 'array', items: { type: 'object', properties: { severity: { type: 'string' }, note: { type: 'string' } }, required: ['note'] }, description: 'Problems found (empty if approved).' },
+      files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] }, description: 'Corrected COMPLETE files — only those needing changes. Empty if approved.' },
+    },
+    required: ['approved'],
+  },
+};
+
+async function qaReview(anthropic, { files, tokensCss, prompt }) {
+  const user = [
+    'The user asked for this change: ' + String(prompt || '').slice(0, 500),
+    tokensCss ? '\nDESIGN TOKENS (src/styles/tokens.css) — the only colours/vars allowed:\n' + String(tokensCss).slice(0, 4000) : '',
+    '\nCHANGED FILE(S) TO REVIEW:',
+    ...files.map((f) => `\n--- ${f.path} ---\n` + String(f.content).slice(0, 16000)),
+  ].join('\n');
+  const stream = anthropic.messages.stream({
+    model: 'claude-sonnet-5', max_tokens: 16000, thinking: { type: 'disabled' },
+    system: qaChecklist(), tools: [QA_TOOL], tool_choice: { type: 'tool', name: 'submit_review' },
+    messages: [{ role: 'user', content: user }],
+  });
+  const resp = await stream.finalMessage();
+  const t = (resp.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_review');
+  return t ? t.input : null;
 }
 
 // Exposed for offline unit tests (api/tests/index.test.js).
