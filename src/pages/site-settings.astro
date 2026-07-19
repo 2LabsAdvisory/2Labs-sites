@@ -157,6 +157,42 @@
   .stepper input:focus{ outline:none; border-color:var(--amber); background:#fff; }
   .stepper span{ font-size:12px; color:var(--ink-soft); }
 
+  /* live preview — sticky mini-site driven by preview CSS vars set in JS */
+  .preview-wrap{ position:sticky; top:0; z-index:5; background:var(--bg); padding-bottom:14px; margin-bottom:4px; }
+  .preview-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .preview-head > span:first-child{ font-size:12.5px; font-weight:700; color:var(--ink); }
+  .preview-hint{ font-size:11px; color:var(--ink-soft); }
+  .mock{ --p-primary:#2F5DA8; --p-primary-contrast:#fff; --p-ink:#1F242E; --p-ink-soft:#676F7E; --p-bg:#F7F8FA; --p-surface:#fff; --p-border:#E5E0DC; --p-soft:#EAF0FA; --p-accent:#2E9E8F; --p-accent-contrast:#fff; --p-ink-contrast:#fff; --p-radius:12px; --p-fh:'Plus Jakarta Sans'; --p-fb:'Inter'; --p-h1:26px; --p-h2:16px; --p-body:12px;
+    border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:var(--shadow); background:var(--p-bg); max-width:860px; }
+  .mock-bar{ display:flex; align-items:center; gap:6px; padding:9px 12px; background:#EDEDF0; border-bottom:1px solid var(--border); }
+  .mock-bar i{ width:9px; height:9px; border-radius:50%; background:#C9CDD4; } .mock-bar i:nth-child(1){ background:#F0645F; } .mock-bar i:nth-child(2){ background:#F6BE4F; } .mock-bar i:nth-child(3){ background:#57C466; }
+  .mock-url{ margin-left:10px; font-size:10.5px; color:#8A8F98; background:#fff; border-radius:6px; padding:3px 12px; flex:1; max-width:260px; }
+  .mock-scroll{ max-height:300px; overflow-y:auto; background:var(--p-bg); color:var(--p-ink); font-family:var(--p-fb),sans-serif; font-size:var(--p-body); }
+  .mock-header{ display:flex; align-items:center; gap:14px; padding:12px 18px; background:var(--p-surface); border-bottom:1px solid var(--p-border); position:sticky; top:0; }
+  .mock-logo{ font-family:var(--p-fh),sans-serif; font-weight:800; font-size:15px; color:var(--p-ink); margin-right:auto; display:flex; align-items:center; }
+  .mock-logo img{ height:22px; max-width:120px; object-fit:contain; display:block; }
+  .mock-nav{ display:flex; gap:13px; } .mock-nav span{ font-size:11px; color:var(--p-ink-soft); font-weight:500; }
+  .mock-cta{ background:var(--p-primary); color:var(--p-primary-contrast); font-weight:600; font-size:11px; padding:7px 13px; border-radius:var(--p-radius); white-space:nowrap; }
+  .mock-hero{ padding:26px 20px 24px; background:var(--p-bg); }
+  .mock-eyebrow{ font-size:9.5px; font-weight:700; letter-spacing:.14em; color:var(--p-primary); margin-bottom:8px; }
+  .mock-h1{ font-family:var(--p-fh),sans-serif; font-weight:800; font-size:var(--p-h1); line-height:1.08; color:var(--p-ink); letter-spacing:-.01em; max-width:460px; }
+  .mock-sub{ font-size:var(--p-body); color:var(--p-ink-soft); line-height:1.5; margin:11px 0 16px; max-width:430px; }
+  .mock-cta.hero, #mockCtaHero{ display:inline-block; }
+  .mock-band{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:20px; }
+  .mock-band .mock-h2{ font-family:var(--p-fh),sans-serif; font-weight:700; font-size:var(--p-h2); color:inherit; }
+  .mock-band-sub{ font-size:calc(var(--p-body) - 0.5px); opacity:.9; margin-top:4px; color:inherit; }
+  .mock-btn-ghost{ border:1.5px solid currentColor; color:inherit; border-radius:var(--p-radius); padding:7px 14px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .band-primary{ background:var(--p-primary); color:var(--p-primary-contrast); }
+  .band-dark{ background:var(--p-ink); color:var(--p-ink-contrast); }
+  .mock-cards{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:22px 20px; background:var(--p-bg); }
+  .mock-card{ background:var(--p-surface); border:1px solid var(--p-border); border-radius:var(--p-radius); padding:14px; }
+  .mock-card .mc-ico{ width:26px; height:26px; border-radius:7px; background:var(--p-soft); margin-bottom:9px; }
+  .mock-card .mc-t{ font-family:var(--p-fh),sans-serif; font-weight:700; font-size:12.5px; color:var(--p-ink); margin-bottom:4px; }
+  .mock-card .mc-d{ font-size:10.5px; color:var(--p-ink-soft); line-height:1.45; }
+  .mock-footer{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; font-size:11px; }
+  .mock-footer #mockFootLogo{ font-family:var(--p-fh),sans-serif; font-weight:800; } .mock-foot-voice{ opacity:.75; font-size:10px; }
+  @media(max-width:720px){ .mock-cards{ grid-template-columns:1fr; } .preview-wrap{ position:static; } }
+
   /* empty / coming-soon placeholders */
   .placeholder{ background:var(--surface); border:1px dashed var(--border); border-radius:var(--radius); padding:40px 24px; text-align:center; max-width:860px; }
   .placeholder .ico{ font-size:30px; }
@@ -198,9 +234,9 @@
       </div>
     </div>
     <div class="topbar-right">
-      <span class="saved" id="saved">Saved ✓</span>
+      <span class="saved" id="saved">Applied ✓</span>
       <button class="btn btn-ghost" id="discardBtn">Discard</button>
-      <button class="btn btn-primary" id="saveBtn">Save changes</button>
+      <button class="btn btn-primary" id="saveBtn">Apply to Site</button>
     </div>
   </div>
 
@@ -237,7 +273,7 @@
         <div class="content-head">
           <div>
             <h2>Brand Guidelines</h2>
-            <p class="content-sub">Your brand system — applied across every page. Edit anything here and <b>Save changes</b> to update the whole site.</p>
+            <p class="content-sub">Your brand system — applied across every page. Edit below and watch the live preview update, then <b>Apply to Site</b> to roll the styles out everywhere.</p>
           </div>
           <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
             <button class="btn btn-ghost" id="downloadBrandBtn" style="white-space:nowrap;">⬇ Download brand guidelines</button>
@@ -252,6 +288,40 @@
         </div>
 
         <div id="brandBody" style="display:none;">
+          <!-- live preview (sticky) -->
+          <div class="preview-wrap" id="previewWrap">
+            <div class="preview-head"><span>👁 Live preview</span><span class="preview-hint">Updates as you edit</span></div>
+            <div class="mock" id="brandPreview">
+              <div class="mock-bar"><i></i><i></i><i></i><div class="mock-url" id="mockUrl">yoursite.com</div></div>
+              <div class="mock-scroll">
+                <div class="mock-header">
+                  <div class="mock-logo" id="mockLogo">Brand</div>
+                  <div class="mock-nav"><span>Home</span><span>Services</span><span>About</span><span>Contact</span></div>
+                  <div class="mock-cta" id="mockCtaTop">Get started</div>
+                </div>
+                <div class="mock-hero">
+                  <div class="mock-eyebrow">WHAT WE DO</div>
+                  <div class="mock-h1" id="mockH1">A headline that sets the tone</div>
+                  <div class="mock-sub" id="mockSub">A short supporting sentence that shows the body font, size, and colour on the page background.</div>
+                  <div class="mock-cta" id="mockCtaHero">Primary action</div>
+                </div>
+                <div class="mock-band band-primary">
+                  <div>
+                    <div class="mock-h2">A bold, contrast-checked call to action</div>
+                    <div class="mock-band-sub">Text on the brand colour uses its contrast token, so it stays readable.</div>
+                  </div>
+                  <div class="mock-btn-ghost">Learn more</div>
+                </div>
+                <div class="mock-cards">
+                  <div class="mock-card"><div class="mc-ico"></div><div class="mc-t">Service one</div><div class="mc-d">Short supporting description.</div></div>
+                  <div class="mock-card"><div class="mc-ico"></div><div class="mc-t">Service two</div><div class="mc-d">Short supporting description.</div></div>
+                  <div class="mock-card"><div class="mc-ico"></div><div class="mc-t">Service three</div><div class="mc-d">Short supporting description.</div></div>
+                </div>
+                <div class="mock-footer band-dark"><span id="mockFootLogo">Brand</span><span class="mock-foot-voice" id="mockFootVoice"></span></div>
+              </div>
+            </div>
+          </div>
+
           <!-- brand basics -->
           <div class="panel">
             <div class="panel-head"><h3>✦ Brand basics</h3></div>
@@ -411,6 +481,17 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="applyModal">
+    <div class="modal">
+      <h3 style="color:var(--ink);">Apply new styles to your site?</h3>
+      <p>This regenerates your site's styles — colors, fonts, type scale, spacing, radius and logo — across <b>every page</b>, using the same contrast-safe rules as when the site was generated. Your content and layout stay as they are.</p>
+      <div class="modal-actions">
+        <button class="cancel" id="amCancel">Cancel</button>
+        <button class="btn-primary" id="amApply" style="border:none;">Apply to Site</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="githubModal">
     <div class="modal">
       <h3>Change publishing settings?</h3>
@@ -524,6 +605,7 @@
   function collectVoice() {
     const arr = [...document.querySelectorAll('#bgVoice .voice-tag [contenteditable]')].map((e) => e.textContent.trim()).filter(Boolean);
     currentBrief.brand.voice = arr;
+    renderPreview();
   }
   function voiceChip(text) {
     const chip = document.createElement('span'); chip.className = 'voice-tag';
@@ -555,11 +637,61 @@
     if ($('logoStatus')) { $('logoStatus').style.display = brand.logo && brand.logo.name ? 'block' : 'none'; $('logoStatus').textContent = brand.logo && brand.logo.name ? '✓ ' + brand.logo.name + ' — saved on this brand' : ''; }
   }
   // Minimal luminance check to pick readable text on a swatch.
-  function bestTextOn(hex) {
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#1F242E';
-    const n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-    const L = 0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255);
-    return L > 0.55 ? '#1F242E' : '#FFFFFF';
+  function toRgb(hex) { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null; }
+  function lum(hex) { const c = toRgb(hex); if (!c) return 0.5; const [r, g, b] = c.map((v) => v / 255); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+  function bestTextOn(hex) { return lum(hex) > 0.55 ? '#1F242E' : '#FFFFFF'; }
+  function mix(a, b, t) { const x = toRgb(a), y = toRgb(b); if (!x || !y) return a; return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join(''); }
+
+  // Keep the preview's fonts loaded as the user switches families.
+  function ensurePreviewFonts(heading, body) {
+    let link = document.getElementById('pvFonts');
+    if (!link) { link = document.createElement('link'); link.id = 'pvFonts'; link.rel = 'stylesheet'; document.head.appendChild(link); }
+    const fam = (f) => encodeURIComponent(f) + ':wght@400;500;600;700;800';
+    link.href = 'https://fonts.googleapis.com/css2?family=' + fam(heading) + '&family=' + fam(body) + '&display=swap';
+  }
+
+  // Live mini-site preview — mirrors tokensFromBrand's derivation (ink/paper by
+  // luminance, contrast tokens) so what the user sees matches what ships.
+  function renderPreview() {
+    const brand = currentBrief && currentBrief.brand; if (!brand || !brand.colors) return;
+    const el = $('brandPreview'); if (!el) return;
+    const colors = brand.colors;
+    const isHex = (h) => /^#[0-9a-f]{6}$/i.test(h || '');
+    const neutral = (colors.neutral || []).filter((c) => isHex(c.hex));
+    const ramp = neutral.length >= 2 ? neutral : [{ hex: '#1F242E' }, { hex: '#676F7E' }, { hex: '#E5E0DC' }, { hex: '#F7F8FA' }];
+    const sorted = [...ramp].sort((a, b) => lum(a.hex) - lum(b.hex));
+    const ink = sorted[0].hex, paper = sorted[sorted.length - 1].hex;
+    const named = (n) => (neutral.find((c) => (c.name || '').toLowerCase().includes(n)) || {}).hex;
+    const inkSoft = named('muted') || named('slate') || mix(ink, paper, 0.42);
+    const border = named('line') || mix(ink, paper, 0.86);
+    const core = colors.core || [];
+    const primary = (isHex(core[0] && core[0].hex) && core[0].hex) || '#2F5DA8';
+    const accent = (colors.accents && colors.accents[0] && colors.accents[0].hex) || primary;
+    const t = brand.typography || {}; const sc = t.scale || SCALE_DEF;
+    const tk = brand.tokens || {}; const radius = Math.min(tk.radius != null ? tk.radius : 14, 22);
+    const heading = t.heading || 'Plus Jakarta Sans', body = t.body || 'Inter';
+    const set = (k, v) => el.style.setProperty(k, v);
+    set('--p-primary', primary); set('--p-primary-contrast', bestTextOn(primary));
+    set('--p-accent', accent); set('--p-accent-contrast', bestTextOn(accent));
+    set('--p-ink', ink); set('--p-ink-soft', inkSoft); set('--p-ink-contrast', bestTextOn(ink));
+    set('--p-bg', paper); set('--p-surface', '#FFFFFF'); set('--p-border', border);
+    set('--p-soft', mix(primary, '#FFFFFF', 0.88));
+    set('--p-radius', radius + 'px');
+    set('--p-fh', "'" + heading + "'"); set('--p-fb', "'" + body + "'");
+    set('--p-h1', Math.max(18, Math.round((sc.h1 || 32) * 0.62)) + 'px');
+    set('--p-h2', Math.max(13, Math.round((sc.h2 || 24) * 0.62)) + 'px');
+    set('--p-body', Math.max(11, Math.round((sc.body || 16) * 0.8)) + 'px');
+    ensurePreviewFonts(heading, body);
+    // dynamic text
+    const org = ($('fName').value || 'Your Brand').trim();
+    const logo = brand.logo && brand.logo.url;
+    $('mockLogo').innerHTML = logo ? '<img src="' + logo + '" alt="logo" />' : org;
+    $('mockFootLogo').textContent = org;
+    $('mockUrl').textContent = ($('fDomain').value || slug || 'yoursite.com').trim();
+    if (brand.tagline) $('mockH1').textContent = brand.tagline;
+    const cta = (currentBrief.content && currentBrief.content.primary_goal) || 'Get started';
+    $('mockCtaTop').textContent = cta; $('mockCtaHero').textContent = cta;
+    $('mockFootVoice').textContent = (brand.voice || []).join(' · ');
   }
 
   function renderBrand() {
@@ -606,6 +738,7 @@
 
     if (brand.a11y) { $('bgA11y').style.display = 'flex'; $('bgA11y').textContent = brand.a11y.passed ? '♿ All text/background pairings pass WCAG 2.2 AA contrast' : '⚠ Some pairings need adjustment for WCAG 2.2 AA'; }
     syncTokenDemo();
+    renderPreview();
   }
 
   function initials(name) { return (name || '2Labs').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '2L'; }
@@ -636,9 +769,20 @@
 
   const flashSaved = () => { const s = $('saved'); s.classList.add('show'); setTimeout(() => s.classList.remove('show'), 1800); };
 
-  // Save changes: general details + brand system (colors, typography, voice).
-  $('saveBtn').addEventListener('click', async () => {
-    const btn = $('saveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
+  // Apply to Site — confirm first (brand styles regenerate across all pages),
+  // then persist. save-site rebuilds tokens.css with the same contrast-safe
+  // rules used during generation, so edits roll out site-wide.
+  const am = $('applyModal');
+  $('saveBtn').addEventListener('click', () => {
+    if (currentBrief && currentBrief.brand && currentBrief.brand.colors) { am.classList.add('open'); }
+    else doApply();
+  });
+  $('amCancel').addEventListener('click', () => am.classList.remove('open'));
+  am.addEventListener('click', (e) => { if (e.target === am) am.classList.remove('open'); });
+  $('amApply').addEventListener('click', () => { am.classList.remove('open'); doApply(); });
+
+  async function doApply() {
+    const btn = $('saveBtn'); btn.disabled = true; btn.textContent = 'Applying…';
     try {
       const body = {
         slug,
@@ -650,8 +794,8 @@
       if (res.status === 401) { signOut(); return; }
       if (res.ok) flashSaved();
     } catch (e) {}
-    btn.disabled = false; btn.textContent = 'Save changes';
-  });
+    btn.disabled = false; btn.textContent = 'Apply to Site';
+  }
 
   $('discardBtn').addEventListener('click', () => location.reload());
 
@@ -669,8 +813,8 @@
       if (up.status === 401) { signOut(); return; }
       if (data.status === 'ok' && data.asset && data.asset.url) {
         currentBrief.brand.logo = { url: data.asset.url, name: data.asset.name, id: data.asset.id };
-        renderLogo(currentBrief.brand);
-        st.textContent = '✓ ' + data.asset.name + ' uploaded — Save changes to apply it across the site.';
+        renderLogo(currentBrief.brand); renderPreview();
+        st.textContent = '✓ ' + data.asset.name + ' uploaded — Apply to Site to roll it out across every page.';
       } else { st.textContent = data.error || 'Upload failed.'; }
     } catch (e) { st.textContent = 'Upload failed.'; }
     $('logoFile').value = '';
@@ -843,6 +987,10 @@
     } catch (e) {}
     btn.textContent = 'Save publishing settings'; btn.disabled = false;
   });
+
+  // Live-update the preview as any brand control changes (colors, fonts, scale,
+  // radius, spacing, tagline, cta, voice — all bubble up to #brandBody).
+  ['input', 'change'].forEach((ev) => $('brandBody').addEventListener(ev, () => renderPreview()));
 
   load();
 </script>
