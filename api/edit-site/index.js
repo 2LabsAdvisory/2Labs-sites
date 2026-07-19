@@ -138,7 +138,7 @@ module.exports = async function (context, req) {
   }
 
   const prompt = req.body && req.body.prompt;
-  const attachments = Array.isArray(req.body && req.body.attachments) ? req.body.attachments.slice(0, 6) : [];
+  const attachments = Array.isArray(req.body && req.body.attachments) ? req.body.attachments.slice(0, 8) : [];
   // The client sends a requestId so it can poll for the result if this request
   // outlives the gateway's client-side timeout (page creation can take ~80s).
   const requestId = req.body && req.body.requestId;
@@ -168,41 +168,45 @@ module.exports = async function (context, req) {
     //     READ them (PDFs), and so it embeds images by their hosted URL.
     const attachmentBlocks = await buildAttachmentBlocks(attachments, context);
 
-    // 2. Ask Claude (studio persona) for the file changes via a tool call.
-    let response;
+    // 2. Ask Claude for the file changes via a forced tool call. Sonnet 5 is on
+    //    by default; disable adaptive thinking (structured codegen, not
+    //    reasoning) and stream so a large max_tokens can't hit an HTTP timeout.
+    //    The model occasionally narrates the change in `summary` but leaves the
+    //    edits empty — retry once, pushing it to output the ACTUAL change.
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const baseContent = [...attachmentBlocks, { type: 'text', text: buildUserMessage(prompt, context_files, attachments) }];
+    const rawCountOf = (tu) => {
+      if (!tu || !tu.input) return 0;
+      if (tu.name === 'edit_files') return (tu.input.edits || []).length;
+      if (tu.name === 'delete_pages') return (tu.input.delete || []).length + (tu.input.edits || []).length;
+      return (tu.input.files || []).length;
+    };
+    let response, toolUse;
     const tGen = Date.now();
-    try {
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      // This is structured code generation behind a forced tool call, not a
-      // reasoning task: disable adaptive thinking (on by default for Sonnet 5)
-      // to roughly halve latency and stay well under the platform timeout.
-      // Stream + finalMessage() so a large max_tokens can't hit an HTTP timeout.
-      const stream = anthropic.messages.stream({
-        model: 'claude-sonnet-5',
-        // Generous ceiling so a legitimately large change (e.g. creating several
-        // full pages at once) isn't truncated. Only big edits use it; streaming +
-        // the async result-store polling cover the longer generation.
-        max_tokens: 32000,
-        thinking: { type: 'disabled' },
-        system: buildSystemPrompt(brand, org),
-        tools: [EDIT_TOOL, APPLY_TOOL, DELETE_TOOL],
-        tool_choice: { type: 'any' },
-        messages: [{ role: 'user', content: [...attachmentBlocks, { type: 'text', text: buildUserMessage(prompt, context_files, attachments) }] }],
-      });
-      response = await stream.finalMessage();
-    } catch (e) {
-      throw new Error(`anthropic: ${e.message}`);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const messages = attempt === 0
+        ? [{ role: 'user', content: baseContent }]
+        : [{ role: 'user', content: baseContent }, { role: 'assistant', content: response.content },
+           { role: 'user', content: [{ type: 'text', text: 'Your previous reply described the change in the summary but did not include it. The summary is NOT the change. Make it now: return the ACTUAL edits via the tool — full old_string→new_string replacements (edit_files) or complete file contents (apply_site_changes).' }] }];
+      try {
+        // Generous ceiling so a legitimately large change isn't truncated.
+        const stream = anthropic.messages.stream({
+          model: 'claude-sonnet-5', max_tokens: 32000, thinking: { type: 'disabled' },
+          system: buildSystemPrompt(brand, org), tools: [EDIT_TOOL, APPLY_TOOL, DELETE_TOOL], tool_choice: { type: 'any' },
+          messages,
+        });
+        response = await stream.finalMessage();
+      } catch (e) {
+        throw new Error(`anthropic: ${e.message}`);
+      }
+      context.log(`[edit-site] anthropic ${Date.now() - tGen}ms, stop=${response.stop_reason}, attempt=${attempt}`);
+      // Truncation: never ship a partial — bail with actionable guidance.
+      if (response.stop_reason === 'max_tokens') {
+        throw new Error('That change was too large to build in one step. Try it in smaller batches — for example "create profile pages for the first 5 animals", then repeat for the rest.');
+      }
+      toolUse = (response.content || []).find((b) => b.type === 'tool_use' && (b.name === 'edit_files' || b.name === 'apply_site_changes' || b.name === 'delete_pages'));
+      if (rawCountOf(toolUse) > 0) break; // got a real change — stop retrying
     }
-    context.log(`[edit-site] anthropic ${Date.now() - tGen}ms, stop=${response.stop_reason}`);
-
-    // A max_tokens stop means the tool call was cut off mid-output — the files
-    // are incomplete/empty, so never ship a partial. Give actionable guidance
-    // instead of the cryptic "no file changes" error.
-    if (response.stop_reason === 'max_tokens') {
-      throw new Error('That change was too large to build in one step. Try it in smaller batches — for example "create profile pages for the first 5 animals", then repeat for the rest.');
-    }
-
-    const toolUse = (response.content || []).find((b) => b.type === 'tool_use' && (b.name === 'edit_files' || b.name === 'apply_site_changes' || b.name === 'delete_pages'));
     if (!toolUse || !toolUse.input) throw new Error('The AI did not return any file changes. Try rephrasing.');
 
     const { summary, primary_path } = toolUse.input;
@@ -530,6 +534,8 @@ function buildSystemPrompt(brand, org) {
     '- Only use apply_site_changes (full file contents) to create a new page or when a change is too sweeping for targeted edits.',
     '- To DELETE a page, call delete_pages with the page file path(s) in `delete`, and use `edits` to remove its navigation link(s)/references (e.g. remove the <a> from Header.astro). Never blank a file to "delete" it — use delete_pages.',
     '- When replacing an image, edit the exact <img …> (or CSS url(…)) to point at the provided hosted URL.',
+    '',
+    'CRITICAL: the `summary` field is a short note for the user — it is NOT the change. The actual change MUST be in `edits` (edit_files) or `files` (apply_site_changes). Returning a summary that describes a change without the corresponding edits/files is a failure — always include the real edits.',
   ].join('\n');
 }
 
