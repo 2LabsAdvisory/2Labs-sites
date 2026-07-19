@@ -13,6 +13,7 @@ const { getSite, upsertSite } = require('../lib/siteRegistry');
 const { setDraftFile } = require('../lib/draftStore');
 const { tokensFromBrand } = require('../lib/seedSite');
 const { routeFor, isHome, headerDraft, kebab } = require('../lib/studio');
+const { recordEvent, hashId } = require('../lib/feedbackStore');
 
 const PLAN_TOOL = {
   name: 'submit_plan',
@@ -119,9 +120,11 @@ module.exports = async function (context, req) {
     await setDraftFile(slug, 'src/components/Header.astro', headerDraft(pages, routeFor(goalPage.slug)));
     await upsertSite(email, { slug, editable: true });
 
+    await recordEvent({ type: 'generate', stage: 'plan', result: 'success', site: slug, user: hashId(email), pages: pages.length, used_fallback: !modelPages.length, archetype: (brief.interpretation && brief.interpretation.archetype) || null });
     context.res = { status: 200, body: { status: 'ok', pages: pages.map((p) => ({ slug: p.slug, title: p.title, purpose: p.purpose, sections: p.sections || [] })) } };
   } catch (err) {
     context.log.error(err);
+    await recordEvent({ type: 'generate', stage: 'plan', result: 'error', site: slug, user: hashId(email), error: String(err.message || '').slice(0, 300) });
     context.res = { status: 500, body: { status: 'error', error: 'Could not plan the site.', detail: err.message } };
   }
 };

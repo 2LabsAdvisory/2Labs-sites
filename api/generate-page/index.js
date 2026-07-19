@@ -12,6 +12,7 @@ const { getSite } = require('../lib/siteRegistry');
 const { setDraftFile } = require('../lib/draftStore');
 const { brandSummary, routeFor, pageFileFor } = require('../lib/studio');
 const { fetchStockImages } = require('../lib/images');
+const { recordEvent, hashId } = require('../lib/feedbackStore');
 
 const PAGE_TOOL = {
   name: 'submit_page',
@@ -130,9 +131,11 @@ module.exports = async function (context, req) {
 
     const path = pageFileFor(page.slug);
     await setDraftFile(slug, path, pageContent);
+    await recordEvent({ type: 'generate', stage: 'page', result: 'success', site: slug, user: hashId(email), page: page.slug, images: images.length, archetype: (brief.interpretation && brief.interpretation.archetype) || null });
     context.res = { status: 200, body: { status: 'ok', path, route: routeFor(page.slug) } };
   } catch (err) {
     context.log.error(err);
+    await recordEvent({ type: 'generate', stage: 'page', result: 'error', site: slug, user: hashId(email), page: page && page.slug, error: String(err.message || '').slice(0, 300) });
     context.res = { status: 500, body: { status: 'error', error: 'Could not build the page.', detail: err.message } };
   }
 };

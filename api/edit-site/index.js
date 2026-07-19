@@ -22,6 +22,7 @@ const { getDraftFile, setDraftFile, listDraftFiles, saveUndoManifest, isDeleted,
 const { recordEdit } = require('../lib/usageStore');
 const { getAsset } = require('../lib/assetStore');
 const { putResult } = require('../lib/editResultStore');
+const { recordEvent, hashId } = require('../lib/feedbackStore');
 const { renderDraft } = require('../lib/renderDraft');
 const { siteRoot, brand, org, DEFAULT_SITE } = require('../lib/siteConfig');
 
@@ -142,6 +143,7 @@ module.exports = async function (context, req) {
   const requestId = req.body && req.body.requestId;
   // Which site's drafts/project this edit targets (namespace + render root).
   const site = (req.body && req.body.site) || DEFAULT_SITE;
+  const evStart = Date.now();
   if ((!prompt || typeof prompt !== 'string' || !prompt.trim()) && attachments.length === 0) {
     context.res = { status: 400, body: { error: 'A non-empty "prompt" string is required.' } };
     return;
@@ -285,11 +287,27 @@ module.exports = async function (context, req) {
       try { await putResult(sessionEmail, requestId, okBody); }
       catch (e) { context.log.warn('[edit-site] result store failed: ' + e.message); }
     }
+    // Learning signal: what the user changed + that it worked (metadata only).
+    await recordEvent({
+      type: 'edit', result: 'success', site, user: hashId(sessionEmail),
+      tool: toolUse.name, targets: files.map((f) => f.path).concat(deletions),
+      prompt: String(prompt || '').slice(0, 400), had_attachment: attachments.length > 0,
+      duration_ms: Date.now() - evStart,
+    });
     context.res = { status: 200, body: okBody };
   } catch (err) {
     context.log.error(err);
     const errBody = { status: 'error', error: 'Edit failed.', detail: err.message };
     if (requestId) { try { await putResult(sessionEmail, requestId, errBody); } catch (e) { /* best-effort */ } }
+    // Learning signal: an edit the user wanted that FAILED — the reliability gold.
+    // `stage` = the prefix our throws use (anthropic/render/draft-save/…) so we
+    // can see WHERE edits break most.
+    await recordEvent({
+      type: 'edit', result: 'error', site, user: hashId(sessionEmail),
+      prompt: String(prompt || '').slice(0, 400), had_attachment: attachments.length > 0,
+      stage: (/^([a-z-]+):/.exec(err.message || '') || [])[1] || 'logic',
+      error: String(err.message || '').slice(0, 300), duration_ms: Date.now() - evStart,
+    });
     context.res = { status: 500, body: errBody };
   }
 };

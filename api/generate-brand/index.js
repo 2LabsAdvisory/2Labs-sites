@@ -15,6 +15,7 @@
 const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { ratio, passesAA, bestTextOn } = require('../lib/contrast');
+const { recordEvent, hashId } = require('../lib/feedbackStore');
 
 const BRAND_TOOL = {
   name: 'submit_brand',
@@ -169,12 +170,14 @@ module.exports = async function (context, req) {
     const brand = tool.input;
     const a11y = verifyContrast(brand);
 
+    await recordEvent({ type: 'generate', stage: 'brand', result: 'success', mode, user: hashId(email), scanned: !!scan, a11y_passed: !!(a11y && a11y.passed) });
     context.res = {
       status: 200,
       body: { status: 'ok', mode, scanned: !!scan, brand, rationale: brand.rationale || '', a11y, content: brand.content || null },
     };
   } catch (err) {
     context.log.error(err);
+    await recordEvent({ type: 'generate', stage: 'brand', result: 'error', mode, user: hashId(email), error: String(err.message || '').slice(0, 300) });
     context.res = { status: 500, body: { status: 'error', error: 'Could not generate the brand.', detail: err.message } };
   }
 };

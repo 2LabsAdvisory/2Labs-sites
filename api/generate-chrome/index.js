@@ -12,6 +12,7 @@ const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../sha
 const { getSite } = require('../lib/siteRegistry');
 const { setDraftFile } = require('../lib/draftStore');
 const { brandSummary, routeFor, isHome, kebab } = require('../lib/studio');
+const { recordEvent, hashId } = require('../lib/feedbackStore');
 
 const CHROME_TOOL = {
   name: 'submit_chrome',
@@ -105,9 +106,11 @@ module.exports = async function (context, req) {
     if (footer.includes('Astro.props') && footer.includes('orgName') && footer.includes('<footer')) { await setDraftFile(slug, 'src/components/Footer.astro', footer); wrote.push('footer'); }
     if (!wrote.length) throw new Error('The chrome designer returned no usable components.');
 
+    await recordEvent({ type: 'generate', stage: 'chrome', result: 'success', site: slug, user: hashId(email), wrote });
     context.res = { status: 200, body: { status: 'ok', wrote } };
   } catch (err) {
     context.log.error(err);
+    await recordEvent({ type: 'generate', stage: 'chrome', result: 'error', site: slug, user: hashId(email), error: String(err.message || '').slice(0, 300) });
     context.res = { status: 500, body: { status: 'error', error: 'Could not design the header and footer.', detail: err.message } };
   }
 };
