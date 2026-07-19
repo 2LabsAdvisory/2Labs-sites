@@ -713,6 +713,13 @@
     if (!createdSlug) { setRow(0, 'working', 'Something went wrong — try again'); studioRunning = false; return; }
 
     try {
+      // Research & planning: live category best-practice + reference analysis
+      // (describe path). Non-fatal — planning proceeds if research is skipped.
+      setRow(0, 'working', 'Researching your category & references…');
+      await Promise.all([
+        apiFetch('/api/research-category', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }).then((r) => r.json()).catch(() => {}),
+        apiFetch('/api/analyze-references', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }).then((r) => r.json()).catch(() => {}),
+      ]);
       setRow(0, 'working', 'Mapping your site…');
       const planRes = await apiFetch('/api/generate-plan', { method: 'POST', body: JSON.stringify({ site: createdSlug }) });
       const planData = await planRes.json().catch(() => ({}));

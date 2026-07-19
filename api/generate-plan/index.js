@@ -74,6 +74,9 @@ module.exports = async function (context, req) {
       'Rules: every page has ONE clear primary action; mobile-first; a logical heading outline. Map the offers into pages/sections. Always include a Home page and a Contact page, plus a page that supports the primary goal. 4–6 pages total. Return via submit_plan only.',
     ].join('\n');
     const interp = brief.interpretation || null;
+    // Prefer the live-researched category playbook (§4.3) over the Brief
+    // Interpreter's lighter read when it's available.
+    const playbook = (brief.research && brief.research.category_playbook) || null;
     const userLines = [
       `Organization: ${content.org_name || site.name || '(unnamed)'}`,
       `Mission: ${content.mission || '(not given)'}`,
@@ -82,7 +85,10 @@ module.exports = async function (context, req) {
     ];
     if (interp) {
       if (interp.archetype) userLines.push(`Site type / archetype: ${interp.archetype}`);
-      if (Array.isArray(interp.must_have_sections) && interp.must_have_sections.length) userLines.push(`Category best-practice sections this site MUST cover (map into pages, in a sensible order): ${interp.must_have_sections.join(', ')}`);
+      const mustHave = (playbook && playbook.must_have_sections) || interp.must_have_sections;
+      if (Array.isArray(mustHave) && mustHave.length) userLines.push(`Category best-practice sections this site MUST cover (map into pages, in a sensible order): ${mustHave.join(', ')}`);
+      if (playbook && Array.isArray(playbook.recommended_sections) && playbook.recommended_sections.length) userLines.push(`High-value sections that differentiate (include where they fit the offering): ${playbook.recommended_sections.join(', ')}`);
+      if (playbook && Array.isArray(playbook.conversion_patterns) && playbook.conversion_patterns.length) userLines.push(`Conversion patterns proven for this category — design pages so these can be applied: ${playbook.conversion_patterns.join(', ')}`);
       const facts = (interp.extracted_facts || []).filter((f) => f && f.label);
       if (facts.length) userLines.push(`Facts the user stated — surface these on the appropriate pages, verbatim, never altered: ${facts.map((f) => `${f.label}: ${f.value}`).join(' | ')}`);
       if (interp.answers && Object.keys(interp.answers).length) userLines.push(`Answers the user gave to clarifying questions: ${Object.entries(interp.answers).map(([k, v]) => `${k}=${v}`).join(' | ')}`);

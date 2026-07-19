@@ -100,9 +100,13 @@ module.exports = async function (context, req) {
         if (interp.archetype) out.push(`Site type / archetype: ${interp.archetype}`);
         const facts = (interp.extracted_facts || []).filter((f) => f && f.label);
         if (facts.length) out.push(`FACTS THE USER STATED — use these verbatim where relevant; never alter a value and never invent competing ones: ${facts.map((f) => `${f.label}: ${f.value}`).join(' | ')}`);
-        const insp = interp.inspiration || {};
-        const dir = [insp.layout_direction, insp.palette_direction, insp.tone].filter(Boolean).join(' · ');
+        // Prefer the dedicated Reference Analyst's direction (§4.2) over the
+        // Brief Interpreter's lighter one; both are IP-safe (patterns, not pixels).
+        const insp = (brief.research && brief.research.inspiration) || interp.inspiration || {};
+        const dir = [insp.layout_direction, insp.palette_direction, insp.type_direction, insp.tone].filter(Boolean).join(' · ');
         if (dir) out.push(`Design direction (mood/patterns only — original work, never copy any specific site's text, images, logos, or exact layout): ${dir}`);
+        if (Array.isArray(insp.do) && insp.do.length) out.push(`Design DO: ${insp.do.join('; ')}`);
+        if (Array.isArray(insp.dont) && insp.dont.length) out.push(`Design DON'T: ${insp.dont.join('; ')}`);
         if (interp.answers && Object.keys(interp.answers).length) out.push(`User's answers to clarifying questions: ${Object.entries(interp.answers).map(([k, v]) => `${k}=${v}`).join(' | ')}`);
         return out;
       })(),
