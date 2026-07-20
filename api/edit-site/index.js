@@ -51,19 +51,22 @@ const APPLY_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
-      summary: { type: 'string', description: 'A friendly 1–2 sentence summary of what you did, in a boutique-studio voice.' },
-      primary_path: { type: 'string', description: 'Repo-relative path of the page to show in the preview (the main page created or edited).' },
+      // The actual change comes FIRST so the model commits to it before writing
+      // the summary (writing the summary first makes it "narrate and forget").
       files: {
         type: 'array',
-        description: 'Every file to write, each with its complete content.',
+        minItems: 1,
+        description: 'Every file to write, each with its complete content. This is the ACTUAL change — it must NOT be empty (a summary alone is not a change).',
         items: {
           type: 'object',
           properties: { path: { type: 'string' }, content: { type: 'string' } },
           required: ['path', 'content'],
         },
       },
+      primary_path: { type: 'string', description: 'Repo-relative path of the page to show in the preview (the main page created or edited).' },
+      summary: { type: 'string', description: 'A friendly 1–2 sentence summary of what you did, in a boutique-studio voice.' },
     },
-    required: ['summary', 'primary_path', 'files'],
+    required: ['files', 'primary_path', 'summary'],
   },
 };
 
@@ -77,11 +80,11 @@ const EDIT_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
-      summary: { type: 'string', description: 'A friendly 1–2 sentence summary of what you changed, in a boutique-studio voice.' },
-      primary_path: { type: 'string', description: 'Repo-relative path of the page to show in the preview.' },
+      // The actual change comes FIRST so the model commits to it before the summary.
       edits: {
         type: 'array',
-        description: 'Each edit replaces an exact snippet of existing file text with new text.',
+        minItems: 1,
+        description: 'Each edit replaces an exact snippet of existing file text with new text. This is the ACTUAL change — it must NOT be empty (a summary alone is not a change).',
         items: {
           type: 'object',
           properties: {
@@ -92,8 +95,10 @@ const EDIT_TOOL = {
           required: ['path', 'old_string', 'new_string'],
         },
       },
+      primary_path: { type: 'string', description: 'Repo-relative path of the page to show in the preview.' },
+      summary: { type: 'string', description: 'A friendly 1–2 sentence summary of what you changed, in a boutique-studio voice.' },
     },
-    required: ['summary', 'primary_path', 'edits'],
+    required: ['edits', 'primary_path', 'summary'],
   },
 };
 
@@ -184,10 +189,20 @@ module.exports = async function (context, req) {
     let response, toolUse;
     const tGen = Date.now();
     for (let attempt = 0; attempt < 2; attempt++) {
+      // On retry, feed the empty attempt back as a proper tool_result (a
+      // tool_use turn MUST be answered by tool_result, or the API 400s) so the
+      // model sees its output was rejected for having no edits.
+      const priorTools = attempt > 0 ? (response.content || []).filter((b) => b.type === 'tool_use') : [];
       const messages = attempt === 0
         ? [{ role: 'user', content: baseContent }]
-        : [{ role: 'user', content: baseContent }, { role: 'assistant', content: response.content },
-           { role: 'user', content: [{ type: 'text', text: 'Your previous reply described the change in the summary but did not include it. The summary is NOT the change. Make it now: return the ACTUAL edits via the tool — full old_string→new_string replacements (edit_files) or complete file contents (apply_site_changes).' }] }];
+        : [
+            { role: 'user', content: baseContent },
+            { role: 'assistant', content: response.content },
+            { role: 'user', content: [
+              ...priorTools.map((b) => ({ type: 'tool_result', tool_use_id: b.id, content: 'Rejected: that tool call contained no edits/files. The summary is NOT the change.', is_error: true })),
+              { type: 'text', text: 'Make the change for real now: return the ACTUAL edits (edit_files old_string→new_string) or complete files (apply_site_changes). The edits/files array must not be empty.' },
+            ] },
+          ];
       try {
         // Generous ceiling so a legitimately large change isn't truncated.
         const stream = anthropic.messages.stream({
