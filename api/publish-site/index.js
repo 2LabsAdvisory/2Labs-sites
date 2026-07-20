@@ -71,11 +71,12 @@ module.exports = async function (context, req) {
 
     // Preflight: a clear, actionable message beats a generic 500 when the
     // configured repo doesn't exist or the token can't reach it.
+    let repoInfo;
     try {
-      await octokit.repos.get(repoRef);
+      repoInfo = await octokit.repos.get(repoRef);
     } catch (e) {
       if (e.status === 404) {
-        context.res = { status: 409, body: { status: 'repo_missing', error: `The repository ${repoLabel} doesn't exist (or the publishing token can't see it). Create it on GitHub, or fix the owner/repo under Settings → Danger zone → GitHub publishing.` } };
+        context.res = { status: 409, body: { status: 'repo_missing', error: `The repository ${repoLabel} doesn't exist (or the publishing token can't see it). Create it on GitHub (an empty repo is fine — we'll initialize it), or fix the owner/repo under Settings → Danger zone → GitHub publishing.` } };
         return;
       }
       if (e.status === 401 || e.status === 403) {
@@ -83,6 +84,33 @@ module.exports = async function (context, req) {
         return;
       }
       throw e;
+    }
+
+    // Auto-initialize: make sure the target branch exists so publishing to a
+    // brand-new/empty repo "just works". Missing branch on a repo that already
+    // has commits → branch it off the default HEAD; a truly empty repo → seed a
+    // first commit (which creates the branch).
+    try {
+      await octokit.repos.getBranch({ ...repoRef, branch });
+    } catch (e) {
+      if (e.status !== 404) throw e;
+      const defaultBranch = (repoInfo && repoInfo.data && repoInfo.data.default_branch) || 'main';
+      let baseSha = null;
+      try {
+        const ref = await octokit.git.getRef({ ...repoRef, ref: `heads/${defaultBranch}` });
+        baseSha = ref.data.object.sha;
+      } catch (e2) { if (e2.status !== 404 && e2.status !== 409) throw e2; }
+      if (baseSha) {
+        await octokit.git.createRef({ ...repoRef, ref: `refs/heads/${branch}`, sha: baseSha });
+        context.log(`[publish] created branch "${branch}" on ${repoLabel} from "${defaultBranch}"`);
+      } else {
+        await octokit.repos.createOrUpdateFileContents({
+          ...repoRef, path: 'README.md', branch,
+          message: 'Initialize repository (2Labs Sites)',
+          content: Buffer.from(`# ${site.name}\n\nPublished with 2Labs Sites.\n`, 'utf-8').toString('base64'),
+        });
+        context.log(`[publish] initialized empty repo ${repoLabel} on "${branch}"`);
+      }
     }
 
     for (const filePath of files) {
