@@ -20,6 +20,14 @@ module.exports = async function (context, req) {
     return;
   }
   const b = req.body || {};
+
+  // Ping mode: verify connectivity + the shared key without applying anything.
+  // Command (or ops) can safely probe with { ping: true }.
+  if (b.ping) {
+    context.res = { status: 200, body: { status: 'ok', ping: true } };
+    return;
+  }
+
   const target = String(b.target || '').trim();
   const change = String(b.edited_change || b.change || '').trim();
   if (!target || !change || !/^(prompt:|kb_playbook:)/.test(target)) {
