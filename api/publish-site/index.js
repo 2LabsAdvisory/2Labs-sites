@@ -29,6 +29,7 @@ module.exports = async function (context, req) {
   }
 
   const slug = (req.body && req.body.site) || DEFAULT_SITE;
+  let repoLabel = ''; // for clear error messages in the catch
 
   const { GITHUB_TOKEN } = process.env;
   if (!GITHUB_TOKEN) {
@@ -65,7 +66,24 @@ module.exports = async function (context, req) {
 
     const octokit = new Octokit({ auth: GITHUB_TOKEN });
     const repoRef = { owner: gh.owner, repo: gh.repo };
+    repoLabel = `${gh.owner}/${gh.repo}`;
     const published = [];
+
+    // Preflight: a clear, actionable message beats a generic 500 when the
+    // configured repo doesn't exist or the token can't reach it.
+    try {
+      await octokit.repos.get(repoRef);
+    } catch (e) {
+      if (e.status === 404) {
+        context.res = { status: 409, body: { status: 'repo_missing', error: `The repository ${repoLabel} doesn't exist (or the publishing token can't see it). Create it on GitHub, or fix the owner/repo under Settings → Danger zone → GitHub publishing.` } };
+        return;
+      }
+      if (e.status === 401 || e.status === 403) {
+        context.res = { status: 409, body: { status: 'repo_forbidden', error: `The publishing token can't access ${repoLabel}. Give it Contents: read & write on that repo, or correct the repo in Settings.` } };
+        return;
+      }
+      throw e;
+    }
 
     for (const filePath of files) {
       const content = await getDraftFile(slug, filePath);
@@ -116,6 +134,13 @@ module.exports = async function (context, req) {
     };
   } catch (err) {
     context.log.error(err);
-    context.res = { status: 500, body: { error: 'Publish failed.', detail: err.message } };
+    const where = repoLabel ? ` to ${repoLabel}` : '';
+    let error = 'Publish failed.';
+    if (err.status === 404) error = `Publish failed: ${repoLabel || 'the repository'} or its branch wasn't found. Check the GitHub owner/repo/branch under Settings → Danger zone.`;
+    else if (err.status === 401 || err.status === 403) error = `Publish failed: the publishing token can't write${where}. It needs a fine-grained PAT with Contents: read & write on that repo.`;
+    else if (err.status === 409) error = `Publish failed: a conflict${where}. If the repo is brand-new and empty, add an initial commit (e.g. a README) so the branch exists, then publish again.`;
+    else if (err.status === 422) error = `Publish failed${where}: ${err.message}. If the repo is empty, initialise it with a first commit and retry.`;
+    else if (err.message) error = `Publish failed${where}: ${err.message}`;
+    context.res = { status: 500, body: { error, detail: err.message } };
   }
 };
