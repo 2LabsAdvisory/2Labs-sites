@@ -31,10 +31,11 @@ const PROPOSALS_TOOL = {
             target: { type: 'string', description: 'What to change: "prompt:generate-page", "prompt:research-category", "prompt:edit", "prompt:generate-plan", or "kb_playbook:<archetype>".' },
             change: { type: 'string', description: 'The specific improvement to make — written as an instruction the target agent can apply directly.' },
             evidence: { type: 'string', description: 'The signal that supports it, QUANTIFIED (e.g. "hero rewritten in 7/10 builds").' },
+            source_metrics: { type: 'object', description: 'The quantified numbers behind this proposal as key→value, e.g. {"edit_rate": 0.7, "builds": 10}. Must not be empty.' },
             risk: { type: 'string', enum: ['low', 'medium', 'high'] },
             suggested_review: { type: 'string', enum: ['auto', 'human'] },
           },
-          required: ['target', 'change', 'evidence', 'risk'],
+          required: ['target', 'change', 'evidence', 'source_metrics', 'risk'],
         },
       },
     },
@@ -47,7 +48,7 @@ function systemPrompt() {
     'You are a product analyst for a website-building studio. You turn signals from real builds into specific, testable improvements to our agent prompts and knowledge-base playbooks. You propose; humans approve.',
     'FIND and prioritize: (1) recurring EDITS — files/sections clients consistently rewrite mean the agent that generates them (or the playbook) is weak; say which target and how to change it. (2) FAILURE PATTERNS — stages with high error rates or the plan falling back. (3) WINNERS — anything correlated with clean, low-edit builds to reinforce.',
     'Valid targets: prompt:generate-page, prompt:generate-plan, prompt:research-category, prompt:edit, or kb_playbook:<archetype>.',
-    'RULES: base every proposal on evidence in the data and QUANTIFY it — no hunches. Prefer small, reversible changes. Never propose anything that would reduce originality, accessibility, or factual accuracy. Do NOT apply changes — only propose. If the data is too thin to justify a change, return an empty proposals list and say so.',
+    'RULES: base every proposal on evidence in the data and QUANTIFY it — no hunches. For each proposal, also fill source_metrics with the exact numbers behind it as key→value (e.g. {"page_edit_rate": 0.7, "builds": 10}). Prefer small, reversible changes. Never propose anything that would reduce originality, accessibility, or factual accuracy. Do NOT apply changes — only propose. If the data is too thin to justify a change, return an empty proposals list and say so.',
     'Return via submit_proposals only.',
   ].join('\n');
 }
@@ -73,6 +74,47 @@ function aggregate(events) {
     top_generation_errors: tally(gens.filter((x) => x.result === 'error'), (e) => `${e.stage}: ${e.error}`),
     kb: { hits: kb.filter((e) => e.result === 'hit').length, refreshes: kb.filter((e) => e.result === 'refresh').length },
   };
+}
+
+// Sites' prompt/playbook improvements are product-wide (not per client site).
+const scopeFor = () => ({ type: 'global' });
+
+// Push proposals to the SHARED 2Labs Command Learning Loop (POST /learning/ingest,
+// service-authenticated with the shared X-Ingest-Key). Best-effort and non-fatal.
+// Configure LEARNING_INGEST_URL (the full ingest endpoint URL) + LEARNING_INGEST_KEY
+// (matching command-functions' LEARNING_INGEST_KEY).
+async function ingestToCommand(proposals) {
+  const url = process.env.LEARNING_INGEST_URL;
+  const key = process.env.LEARNING_INGEST_KEY;
+  if (!url || !key) return { configured: false, sent: 0 };
+  const period = new Date().toISOString().slice(0, 10);
+  let sent = 0, duplicate = 0, failed = 0;
+  for (const p of proposals) {
+    try {
+      const metrics = (p.source_metrics && typeof p.source_metrics === 'object' && Object.keys(p.source_metrics).length)
+        ? p.source_metrics : { note: String(p.evidence || '').slice(0, 200) };
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-ingest-key': key },
+        body: JSON.stringify({
+          application: '2Labs Sites',
+          scope: scopeFor(),
+          target: p.target,
+          change: p.change,
+          evidence: p.evidence,
+          source_metrics: metrics,
+          risk: p.risk,
+          suggested_review: p.suggested_review === 'auto' ? 'auto' : 'human',
+          period,
+          proposal_id: p.id,
+        }),
+      });
+      if (res.status === 201) sent++;
+      else if (res.status === 409) duplicate++;
+      else failed++;
+    } catch (e) { failed++; }
+  }
+  return { configured: true, sent, duplicate, failed };
 }
 
 module.exports = async function (context, req) {
@@ -112,7 +154,12 @@ module.exports = async function (context, req) {
     const out = (tool && tool.input) || { proposals: [], period_summary: 'No output.' };
     const stored = await addProposals(out.proposals || [], { period_days: days, period_summary: out.period_summary });
 
-    context.res = { status: 200, body: { status: 'ok', period_summary: out.period_summary, proposals: stored } };
+    // Incorporate into the SHARED 2Labs Command Learning Loop: push each
+    // proposal to Command's /learning/ingest (service-authenticated). Best-effort
+    // and non-fatal — Sites keeps its own copy regardless.
+    const ingest = await ingestToCommand(stored);
+
+    context.res = { status: 200, body: { status: 'ok', period_summary: out.period_summary, proposals: stored, ingest } };
   } catch (err) {
     context.log.error(err);
     context.res = { status: 500, body: { status: 'error', error: 'Could not run insights.', detail: err.message } };
