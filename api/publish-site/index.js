@@ -6,7 +6,9 @@
  * The ONLY place git is touched. Publishes the given site's draft to ITS OWN
  * GitHub repo (from the user's registry), not the builder repo. Reads every
  * draft file, commits each to the site's branch (which triggers that site's
- * SWA production deploy), then clears the draft on success.
+ * SWA production deploy). The draft is left in place as the working copy — a
+ * generated site lives only in the draft store, so clearing it would wipe the
+ * editable site.
  *
  * A site with no repo configured returns `not_connected` — we never push a
  * client site's files into the builder repo.
@@ -17,7 +19,7 @@
 
 const { Octokit } = require('@octokit/rest');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
-const { listDraftFiles, getDraftFile, clearDraft, isDeleted } = require('../lib/draftStore');
+const { listDraftFiles, getDraftFile, isDeleted } = require('../lib/draftStore');
 const { scaffoldFiles } = require('../lib/publishScaffold');
 const { getSite } = require('../lib/siteRegistry');
 const { DEFAULT_SITE } = require('../lib/siteConfig');
@@ -186,8 +188,12 @@ module.exports = async function (context, req) {
       return;
     }
 
-    // Only clear the draft once everything committed successfully.
-    await clearDraft(slug);
+    // Deliberately DO NOT clear the draft here. A generated site lives ONLY in
+    // the draft store (it has no local project directory), so clearing drafts on
+    // publish would erase the editable copy and the editor would fall back to the
+    // empty _base skeleton ("new site"). The draft is the working copy; publish
+    // just commits a snapshot to GitHub. (Publishing again re-commits — cheap,
+    // and safe.)
 
     context.res = {
       status: 200,
