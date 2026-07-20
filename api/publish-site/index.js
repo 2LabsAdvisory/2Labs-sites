@@ -18,6 +18,7 @@
 const { Octokit } = require('@octokit/rest');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { listDraftFiles, getDraftFile, clearDraft, isDeleted } = require('../lib/draftStore');
+const { scaffoldFiles } = require('../lib/publishScaffold');
 const { getSite } = require('../lib/siteRegistry');
 const { DEFAULT_SITE } = require('../lib/siteConfig');
 
@@ -59,10 +60,6 @@ module.exports = async function (context, req) {
     const branch = gh.branch || 'main';
 
     const files = await listDraftFiles(slug);
-    if (files.length === 0) {
-      context.res = { status: 200, body: { status: 'nothing_to_publish', message: 'No draft changes to publish.' } };
-      return;
-    }
 
     const octokit = new Octokit({ auth: GITHUB_TOKEN });
     const repoRef = { owner: gh.owner, repo: gh.repo };
@@ -165,6 +162,30 @@ module.exports = async function (context, req) {
       published.push(filePath);
     }
 
+    // Commit the project scaffolding (package.json, astro.config, tsconfig,
+    // BaseLayout, SWA config) so the repo is a COMPLETE, buildable Astro site.
+    // Gap-fill only: never overwrite a file that's already there (drafts win,
+    // and any hand-tweaked scaffolding is preserved).
+    const draftSet = new Set(files);
+    for (const s of scaffoldFiles(slug)) {
+      if (draftSet.has(s.path)) continue;
+      let exists = false;
+      try { await octokit.repos.getContent({ ...repoRef, path: s.path, ref: branch }); exists = true; }
+      catch (err) { if (err.status !== 404) throw err; }
+      if (exists) continue;
+      await octokit.repos.createOrUpdateFileContents({
+        ...repoRef, path: s.path, branch,
+        message: `Scaffold: ${s.path} (by ${sessionEmail})`,
+        content: Buffer.from(s.content, 'utf-8').toString('base64'),
+      });
+      published.push(s.path);
+    }
+
+    if (published.length === 0) {
+      context.res = { status: 200, body: { status: 'nothing_to_publish', message: 'No draft changes to publish.' } };
+      return;
+    }
+
     // Only clear the draft once everything committed successfully.
     await clearDraft(slug);
 
@@ -176,7 +197,7 @@ module.exports = async function (context, req) {
         repo: `${gh.owner}/${gh.repo}`,
         files: published,
         count: published.length,
-        note: 'Committed. Azure Static Web Apps will rebuild and deploy production.',
+        note: 'Committed. Connect this repo to a new Static Web App (framework: Astro, output: dist) to host it.',
       },
     };
   } catch (err) {
