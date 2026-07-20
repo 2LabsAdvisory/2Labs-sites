@@ -75,15 +75,34 @@ module.exports = async function (context, req) {
     try {
       repoInfo = await octokit.repos.get(repoRef);
     } catch (e) {
-      if (e.status === 404) {
-        context.res = { status: 409, body: { status: 'repo_missing', error: `The repository ${repoLabel} doesn't exist (or the publishing token can't see it). Create it on GitHub (an empty repo is fine — we'll initialize it), or fix the owner/repo under Settings → Danger zone → GitHub publishing.` } };
-        return;
-      }
       if (e.status === 401 || e.status === 403) {
         context.res = { status: 409, body: { status: 'repo_forbidden', error: `The publishing token can't access ${repoLabel}. Give it Contents: read & write on that repo, or correct the repo in Settings.` } };
         return;
       }
-      throw e;
+      if (e.status !== 404) throw e;
+      // Repo doesn't exist — create it as a PRIVATE repo under the configured
+      // owner (org or the token's own account), empty; the branch bootstrap
+      // below seeds the first commit.
+      try {
+        let isOrg = false;
+        try { await octokit.orgs.get({ org: gh.owner }); isOrg = true; } catch (oe) { if (oe.status !== 404) throw oe; }
+        const createArgs = { name: gh.repo, private: true, auto_init: false, description: `${site.name} — published by 2Labs Sites` };
+        if (isOrg) {
+          await octokit.repos.createInOrg({ org: gh.owner, ...createArgs });
+        } else {
+          const me = await octokit.users.getAuthenticated();
+          if (String(me.data.login).toLowerCase() !== String(gh.owner).toLowerCase()) {
+            context.res = { status: 409, body: { status: 'repo_missing', error: `Can't auto-create ${repoLabel}: "${gh.owner}" isn't an organization the publishing token can create in, and isn't the token's own account (${me.data.login}). Create the repo manually, or set the owner to an org/account the token controls.` } };
+            return;
+          }
+          await octokit.repos.createForAuthenticatedUser(createArgs);
+        }
+        context.log(`[publish] created private repo ${repoLabel}`);
+        repoInfo = await octokit.repos.get(repoRef);
+      } catch (ce) {
+        context.res = { status: 409, body: { status: 'repo_create_failed', error: `Couldn't create ${repoLabel}: ${ce.message}. The publishing token needs permission to create repositories in "${gh.owner}".` } };
+        return;
+      }
     }
 
     // Auto-initialize: make sure the target branch exists so publishing to a
