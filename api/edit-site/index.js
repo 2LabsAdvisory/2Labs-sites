@@ -173,11 +173,11 @@ module.exports = async function (context, req) {
     //     READ them (PDFs), and so it embeds images by their hosted URL.
     const attachmentBlocks = await buildAttachmentBlocks(attachments, context);
 
-    // 2. Ask Claude for the file changes via a forced tool call. Sonnet 5 is on
-    //    by default; disable adaptive thinking (structured codegen, not
-    //    reasoning) and stream so a large max_tokens can't hit an HTTP timeout.
-    //    The model occasionally narrates the change in `summary` but leaves the
-    //    edits empty — retry once, pushing it to output the ACTUAL change.
+    // 2. Ask Claude for the file changes via a forced tool call, streaming so a
+    //    large max_tokens can't hit an HTTP timeout. If the model comes back with
+    //    no edits (it sometimes narrates the change in `summary` but leaves the
+    //    edits empty, esp. for complex interactive changes), retry once WITH
+    //    adaptive thinking so it can actually plan and produce the change.
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const baseContent = [...attachmentBlocks, { type: 'text', text: buildUserMessage(prompt, context_files, attachments) }];
     const rawCountOf = (tu) => {
@@ -200,14 +200,21 @@ module.exports = async function (context, req) {
             { role: 'assistant', content: response.content },
             { role: 'user', content: [
               ...priorTools.map((b) => ({ type: 'tool_result', tool_use_id: b.id, content: 'Rejected: that tool call contained no edits/files. The summary is NOT the change.', is_error: true })),
-              { type: 'text', text: 'Make the change for real now: return the ACTUAL edits (edit_files old_string→new_string) or complete files (apply_site_changes). The edits/files array must not be empty.' },
+              { type: 'text', text: 'Think through exactly what this change needs — the markup, any <script> for interactivity, and how to wire it into the existing page — then MAKE it. You MUST call edit_files or apply_site_changes with the real change (non-empty edits/files); do not reply with plain text.' },
             ] },
           ];
       try {
+        // Attempt 0 is fast (no thinking, forced tool) — handles the common,
+        // simple edit. The retry (only reached when attempt 0 came back empty,
+        // i.e. a complex change like a lightbox) turns ON adaptive thinking so
+        // the model can plan the markup + script + wiring. Thinking requires
+        // tool_choice:auto, so we lean on the instruction to force a tool call.
         // Generous ceiling so a legitimately large change isn't truncated.
         const stream = anthropic.messages.stream({
-          model: 'claude-sonnet-5', max_tokens: 32000, thinking: { type: 'disabled' },
-          system: buildSystemPrompt(brand, org), tools: [EDIT_TOOL, APPLY_TOOL, DELETE_TOOL], tool_choice: { type: 'any' },
+          model: 'claude-sonnet-5', max_tokens: 32000,
+          thinking: attempt === 0 ? { type: 'disabled' } : { type: 'adaptive' },
+          system: buildSystemPrompt(brand, org), tools: [EDIT_TOOL, APPLY_TOOL, DELETE_TOOL],
+          tool_choice: attempt === 0 ? { type: 'any' } : { type: 'auto' },
           messages,
         });
         response = await stream.finalMessage();
