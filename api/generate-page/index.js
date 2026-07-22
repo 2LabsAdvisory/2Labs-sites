@@ -10,10 +10,12 @@ const { Anthropic } = require('@anthropic-ai/sdk');
 const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../shared/auth');
 const { getSite } = require('../lib/siteRegistry');
 const { setDraftFile } = require('../lib/draftStore');
-const { brandSummary, routeFor, pageFileFor } = require('../lib/studio');
+const { brandSummary, routeFor, pageFileFor, routeForPath, pageFileForPath, fixLayoutImport } = require('../lib/studio');
 const { fetchStockImages } = require('../lib/images');
 const { recordEvent, hashId } = require('../lib/feedbackStore');
 const { withAddendum } = require('../lib/learningStore');
+const importStore = require('../lib/importStore');
+const buildStore = require('../lib/buildStore');
 
 const PAGE_TOOL = {
   name: 'submit_page',
@@ -33,8 +35,13 @@ module.exports = async function (context, req) {
   const slug = req.body && req.body.site;
   const page = req.body && req.body.page;
   const pages = Array.isArray(req.body && req.body.pages) ? req.body.pages : [];
-  if (!slug || !page || !page.slug) { context.res = { status: 400, body: { error: 'A site and page are required.' } }; return; }
+  const navTree = Array.isArray(req.body && req.body.nav) ? req.body.nav : null;
+  if (!slug || !page || (!page.slug && !page.path)) { context.res = { status: 400, body: { error: 'A site and page are required.' } }; return; }
   if (!process.env.ANTHROPIC_API_KEY) { context.res = { status: 500, body: { error: 'Server is not configured.' } }; return; }
+
+  // Imported pages carry a real URL path (nested); blank/describe pages a slug.
+  const pageRoute = page.path ? routeForPath(page.path) : routeFor(page.slug);
+  const pageFile = page.path ? pageFileForPath(page.path) : pageFileFor(page.slug);
 
   try {
     const site = await getSite(email, slug);
@@ -43,12 +50,21 @@ module.exports = async function (context, req) {
     const content = brief.content || {};
     const orgName = content.org_name || site.name || 'Your Organization';
     const primaryCta = content.primary_goal || 'Get in touch';
+    const isImport = brief.mode === 'import' && !!page.path;
 
-    const nav = pages.map((p) => `- ${p.title} → ${routeFor(p.slug)}`).join('\n');
+    // Real content crawled from the original page (import only) to preserve.
+    const corpus = isImport ? await importStore.getPage(slug, page.path).catch(() => null) : null;
+
+    // Internal-link routes: the full nav tree for imports (so deep links
+    // resolve), else the flat plan.
+    const nav = navTree
+      ? navTree.flatMap((g) => [`- ${g.title} → ${g.route}`, ...((g.children || []).map((c) => `  - ${c.title} → ${c.route}`))]).join('\n')
+      : pages.map((p) => `- ${p.title} → ${p.path ? routeForPath(p.path) : routeFor(p.slug)}`).join('\n');
+    // Child pages for a section-landing page (drive highlight grids/tiles).
+    const childLinks = navTree ? (navTree.find((g) => g.route === pageRoute) || {}).children || [] : [];
     const sections = (page.sections || []).map((s, i) => `${i + 1}. ${s.heading} — ${s.intent}`).join('\n') || '(design suitable sections for this page)';
 
-    // Topical photography. Search by SUBJECT (archetype + offerings + page
-    // topic) — not the org name or a generic "Home", which return nothing.
+    // Imagery: prefer the page's REAL photos on import; top up with topical stock.
     const imgBits = [
       brief.interpretation && brief.interpretation.archetype,
       (content.offers || [])[0],
@@ -56,7 +72,8 @@ module.exports = async function (context, req) {
       /^home$/i.test(page.title || '') ? '' : page.title,
     ].filter(Boolean);
     const imgQuery = (imgBits.join(' ').trim() || content.mission || orgName).slice(0, 80);
-    const images = await fetchStockImages(imgQuery, 5);
+    let images = (corpus && Array.isArray(corpus.images) ? corpus.images.slice(0, 5).map((u) => ({ url: u, alt: `${page.title || orgName}` })) : []);
+    if (images.length < 3) { const stock = await fetchStockImages(imgQuery, 5 - images.length); images = images.concat(stock); }
     context.log(`[generate-page] images: q="${imgQuery}" -> ${images.length} (${images.length ? new URL(images[0].url).hostname : 'none'})`);
 
     const system = [
@@ -114,14 +131,24 @@ module.exports = async function (context, req) {
       '',
       images.length ? 'PHOTOGRAPHS TO USE (exact URLs — embed with brand-tinted overlays + alt text):\n' + images.map((im, i) => `${i + 1}. ${im.url}\n   alt: ${im.alt}`).join('\n') : 'No photographs available — use gradient/SVG art.',
       '',
-      `Build this page — "${page.title}" (route ${routeFor(page.slug)}). Purpose: ${page.purpose}`,
-      'Sections:',
-      sections,
+      // Ground the page in the REAL content crawled from this page (import).
+      ...(corpus ? [
+        'REAL CONTENT FROM THE EXISTING PAGE — this is the client\'s OWN site. Reproduce ALL of this content faithfully (keep every fact, program name, service, and specific verbatim; do NOT drop, summarize away, or invent competing details). Your job is to RE-DESIGN and re-lay-out this exact content at the premium bar — not to rewrite what it says.',
+        corpus.title ? `Existing page title: ${corpus.title}` : '',
+        corpus.description ? `Existing meta description: ${corpus.description}` : '',
+        (corpus.headings && corpus.headings.length) ? `Existing headings (preserve these as the content outline):\n${corpus.headings.slice(0, 30).join('\n')}` : '',
+        corpus.text ? `Existing body copy (rewrite lightly for flow only — keep all facts):\n${String(corpus.text).slice(0, 5000)}` : '',
+        '',
+      ].filter(Boolean) : []),
+      (childLinks && childLinks.length) ? `This is a SECTION page. Feature its sub-pages prominently as a card/tile grid with a clear link to each:\n${childLinks.map((c) => `- ${c.title} → ${c.route}`).join('\n')}` : '',
       '',
-      'Sitemap (use these routes for any internal links):',
+      `Build this page — "${page.title}" (route ${pageRoute}). Purpose: ${page.purpose || 'Present this page\'s content clearly and drive the primary action.'}`,
+      page.sections && page.sections.length ? 'Sections:\n' + sections : '',
+      '',
+      'Sitemap (use these EXACT routes for any internal links — never invent routes):',
       nav,
-      brief.mode === 'import' ? '\nThis is a redesign — faithful to the organization; preserve real facts, never invent specifics like hours/prices.' : '\nNew site — credible best-practice copy; mark any invented specific with [confirm].',
-    ].join('\n');
+      corpus ? '\nThis is a REDESIGN of the client\'s own page: preserve all real content/facts, restructure and elevate the design. Never invent specifics (hours/prices/phone) not present above.' : (brief.mode === 'import' ? '\nThis is a redesign — faithful to the organization; preserve real facts, never invent specifics like hours/prices.' : '\nNew site — credible best-practice copy; mark any invented specific with [confirm].'),
+    ].filter((x) => x !== '').join('\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     // Inject any human-approved learning-loop improvements for this agent.
@@ -145,22 +172,27 @@ module.exports = async function (context, req) {
     };
     const isComplete = (c) => c.includes('BaseLayout') && /<\/BaseLayout>/.test(c);
 
+    const label = page.slug || page.path;
     let { content: pageContent, truncated } = await buildOnce(user);
     if (!isComplete(pageContent) || truncated) {
-      context.log(`[generate-page] "${page.slug}" first attempt incomplete (truncated=${truncated}, len=${pageContent.length}); retrying tighter`);
+      context.log(`[generate-page] "${label}" first attempt incomplete (truncated=${truncated}, len=${pageContent.length}); retrying tighter`);
       const retryUser = user + '\n\nCRITICAL: Return the COMPLETE .astro file — it must NOT be cut off and MUST end with the closing </BaseLayout> tag. Keep it rich but tighter (fewer, denser sections if needed) so the whole file fits comfortably within the limit.';
       const r = await buildOnce(retryUser);
       if (isComplete(r.content) && (!r.truncated || !isComplete(pageContent))) pageContent = r.content;
     }
     if (!isComplete(pageContent)) throw new Error('The page did not build correctly.');
 
-    const path = pageFileFor(page.slug);
-    await setDraftFile(slug, path, pageContent);
-    await recordEvent({ type: 'generate', stage: 'page', result: 'success', site: slug, user: hashId(email), page: page.slug, images: images.length, archetype: (brief.interpretation && brief.interpretation.archetype) || null });
-    context.res = { status: 200, body: { status: 'ok', path, route: routeFor(page.slug) } };
+    // Nested pages sit deeper than src/pages/, so fix the BaseLayout import depth.
+    pageContent = fixLayoutImport(pageContent, pageFile);
+    await setDraftFile(slug, pageFile, pageContent);
+    // Mark this page done in the build manifest (import full-mirror builds).
+    if (isImport) await buildStore.markPage(slug, pageRoute, { status: 'done', error: null }).catch(() => {});
+    await recordEvent({ type: 'generate', stage: 'page', result: 'success', site: slug, user: hashId(email), page: label, images: images.length, archetype: (brief.interpretation && brief.interpretation.archetype) || null });
+    context.res = { status: 200, body: { status: 'ok', path: pageFile, route: pageRoute } };
   } catch (err) {
     context.log.error(err);
-    await recordEvent({ type: 'generate', stage: 'page', result: 'error', site: slug, user: hashId(email), page: page && page.slug, error: String(err.message || '').slice(0, 300) });
+    if (page && page.path) await buildStore.markPage(slug, pageRoute, { status: 'failed', error: String(err.message || '').slice(0, 200) }).catch(() => {});
+    await recordEvent({ type: 'generate', stage: 'page', result: 'error', site: slug, user: hashId(email), page: page && (page.slug || page.path), error: String(err.message || '').slice(0, 300) });
     context.res = { status: 500, body: { status: 'error', error: 'Could not build the page.', detail: err.message } };
   }
 };

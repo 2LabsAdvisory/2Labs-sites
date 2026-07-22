@@ -12,8 +12,113 @@ const { getBearerToken, validateSessionEmail, isEmailAllowed } = require('../sha
 const { getSite, upsertSite } = require('../lib/siteRegistry');
 const { setDraftFile } = require('../lib/draftStore');
 const { tokensFromBrand } = require('../lib/seedSite');
-const { routeFor, isHome, headerDraft, kebab } = require('../lib/studio');
+const { routeFor, isHome, headerDraft, kebab, routeForPath } = require('../lib/studio');
 const { recordEvent, hashId } = require('../lib/feedbackStore');
+const importStore = require('../lib/importStore');
+const buildStore = require('../lib/buildStore');
+
+// --- Imported (full-mirror) planning ---------------------------------------
+// Clean, order and label the crawled nav tree, then write the manifest of every
+// page to build. The IA comes from the real site; the model only tidies labels.
+const ORGANIZE_TOOL = {
+  name: 'organize_nav',
+  description: 'Tidy the imported navigation: clean human labels, sensible order, and the primary call-to-action.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      groups: {
+        type: 'array',
+        description: 'The top-level nav groups, in the order they should appear.',
+        items: {
+          type: 'object',
+          properties: {
+            key: { type: 'string', description: 'The exact group key (route) given in the input — do not change it.' },
+            label: { type: 'string', description: 'A clean, human nav label (e.g. "Programs", "Get Involved", "About").' },
+          },
+          required: ['key', 'label'],
+        },
+      },
+      primary_cta_route: { type: 'string', description: 'The route for the primary CTA button (e.g. a Donate or Contact route from the input).' },
+      primary_cta_label: { type: 'string', description: 'A short CTA label (e.g. "Donate", "Get in touch").' },
+    },
+    required: ['groups'],
+  },
+};
+
+const titleCase = (seg) => String(seg || '').replace(/^\//, '').replace(/[-_/]+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Convert the crawl tree (path/title/children) into a header nav tree with clean
+// routes; apply AI label/order tidying when available.
+function buildNav(rawTree, tidy) {
+  const labelByKey = new Map((tidy && tidy.groups || []).map((g) => [g.key, g.label]));
+  const order = new Map((tidy && tidy.groups || []).map((g, i) => [g.key, i]));
+  const nav = (rawTree || []).map((g) => {
+    const route = g.path ? routeForPath(g.path) : '/';
+    return {
+      title: labelByKey.get(route) || labelByKey.get(g.path) || g.title || titleCase(g.path),
+      route,
+      children: (g.children || []).map((c) => ({ title: c.title || titleCase(c.path), route: routeForPath(c.path) })),
+    };
+  });
+  nav.sort((a, b) => (order.has(a.route) ? order.get(a.route) : 99) - (order.has(b.route) ? order.get(b.route) : 99));
+  return nav;
+}
+
+async function planImport(context, email, site, slug) {
+  const brief = site.brief || {};
+  const rawTree = await importStore.getUrlTree(slug);
+  const index = await importStore.getIndex(slug);
+  if (!rawTree || !index.length) return null; // not an import corpus
+
+  // Light, non-fatal AI tidy of the nav labels/order + primary CTA.
+  let tidy = null;
+  try {
+    const groupsForAi = rawTree.map((g) => ({
+      key: g.path ? routeForPath(g.path) : '/',
+      current_label: g.title || titleCase(g.path),
+      sample_children: (g.children || []).slice(0, 5).map((c) => c.title).filter(Boolean),
+      child_count: (g.children || []).length,
+    }));
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const resp = await anthropic.messages.create({
+      model: 'claude-sonnet-5', max_tokens: 1500, thinking: { type: 'disabled' },
+      system: 'You tidy a website navigation imported from a real site. Keep every group; give each a clean, conventional label; order them the way a good nonprofit/org site would (primary audience first, About/Contact later). Pick a primary CTA (Donate/Contact/Get Involved) from the given routes. Return via organize_nav only. Never invent groups or routes.',
+      tools: [ORGANIZE_TOOL], tool_choice: { type: 'tool', name: 'organize_nav' },
+      messages: [{ role: 'user', content: 'Nav groups (key = route, do not change keys):\n' + JSON.stringify(groupsForAi, null, 2) }],
+    });
+    const tool = (resp.content || []).find((c) => c.type === 'tool_use' && c.name === 'organize_nav');
+    tidy = tool && tool.input || null;
+  } catch (e) { context.log('[generate-plan] nav tidy skipped: ' + e.message); }
+
+  const nav = buildNav(rawTree, tidy);
+
+  // Full page list = every crawled page (home guaranteed first).
+  const seen = new Set();
+  const pages = [];
+  const pushPage = (path, title) => {
+    const route = routeForPath(path);
+    const key = route === '/' ? '/' : route;
+    if (seen.has(key)) return;
+    seen.add(key);
+    pages.push({ path: route, title: title || titleCase(path) });
+  };
+  pushPage('/', 'Home');
+  for (const e of index) pushPage(e.path, e.title);
+
+  // Validate the CTA route against known routes; else fall back to a contact-ish page.
+  const routeSet = new Set(pages.map((p) => p.path));
+  let goalRoute = (tidy && routeSet.has(tidy.primary_cta_route)) ? tidy.primary_cta_route : null;
+  if (!goalRoute) { const c = pages.find((p) => /donat|contact|get-involved|volunteer|support/i.test(p.path)); goalRoute = c ? c.path : (pages[pages.length - 1] || { path: '/' }).path; }
+
+  const logoUrl = (brief.brand && brief.brand.logo && brief.brand.logo.url) || '';
+  await setDraftFile(slug, 'src/styles/tokens.css', tokensFromBrand(brief.brand));
+  await setDraftFile(slug, 'src/components/Header.astro', headerDraft(null, goalRoute, logoUrl, nav));
+  await buildStore.createManifest(slug, { ownerEmail: email, nav, pages });
+  await upsertSite(email, { slug, editable: true });
+
+  await recordEvent({ type: 'generate', stage: 'plan', result: 'success', mode: 'import', site: slug, user: hashId(email), pages: pages.length, archetype: (brief.interpretation && brief.interpretation.archetype) || null });
+  return { status: 'ok', mode: 'import', total: pages.length, nav, pages: pages.map((p) => ({ slug: p.path, path: p.path, title: p.title, sections: [] })) };
+}
 
 const PLAN_TOOL = {
   name: 'submit_plan',
@@ -68,6 +173,13 @@ module.exports = async function (context, req) {
     if (!site) { context.res = { status: 404, body: { error: 'Site not found.' } }; return; }
     const brief = site.brief || {};
     const content = brief.content || {};
+
+    // Imported site with a crawl corpus: mirror the real IA (grouped/mega-menu
+    // nav + a manifest of every page) instead of inventing a shallow sitemap.
+    if (brief.mode === 'import' && await importStore.hasCorpus(slug)) {
+      const imported = await planImport(context, email, site, slug);
+      if (imported) { context.res = { status: 200, body: imported }; return; }
+    }
 
     const system = [
       'You are a senior UX architect and content strategist. Design the information architecture for a mission-driven organization so visitors effortlessly reach the primary goal.',

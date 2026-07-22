@@ -773,52 +773,51 @@
     await createSite();
     if (!createdSlug) { setRow(0, 'working', 'Something went wrong — try again'); studioRunning = false; return; }
 
+    // Build one page (retry once). A page-build 500 resolves .json() WITHOUT
+    // throwing, so treat a non-ok HTTP status / non-'ok' body as a failure.
+    const buildPage = async (page, extra) => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await apiFetch('/api/generate-page', { method: 'POST', body: JSON.stringify({ site: createdSlug, page, ...(extra || {}) }) });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.status === 'ok') return true;
+        } catch (e) { /* retry */ }
+      }
+      return false;
+    };
+    const isHomePage = (p) => { const k = ((p && (p.path || p.slug)) || '').toLowerCase().trim(); return k === '' || k === '/' || k === 'home' || k === 'index'; };
+
     try {
-      // Research & planning: live category best-practice + reference analysis
-      // (describe path). Non-fatal — planning proceeds if research is skipped.
-      setRow(0, 'working', 'Researching your category & references…');
-      await Promise.all([
-        apiFetch('/api/research-category', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }).then((r) => r.json()).catch(() => {}),
-        apiFetch('/api/analyze-references', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }).then((r) => r.json()).catch(() => {}),
-      ]);
-      setRow(0, 'working', 'Mapping your site…');
-      const planRes = await apiFetch('/api/generate-plan', { method: 'POST', body: JSON.stringify({ site: createdSlug }) });
-      const planData = await planRes.json().catch(() => ({}));
-      if (planData.status !== 'ok' || !Array.isArray(planData.pages) || !planData.pages.length) throw new Error('plan failed');
-      setRow(0, 'done');
-      const pages = planData.pages;
-      setRow(1, 'working', 'Designing…'); setRow(3, 'working', 'Writing content…');
-      // Design the shared header + footer for this site (distinct per brand).
-      setRow(2, 'working', 'Designing header & footer…');
-      try { await (await apiFetch('/api/generate-chrome', { method: 'POST', body: JSON.stringify({ site: createdSlug, pages }) })).json(); }
-      catch (e) { /* keep going — deterministic header + base footer remain */ }
-      // Build each page. A page-build 500 resolves .json() WITHOUT throwing, so
-      // treat a non-ok HTTP status / non-'ok' body as a failure (not silent
-      // success), retry once, and track what failed.
-      const isHomeSlug = (p) => { const k = ((p && p.slug) || '').toLowerCase().trim(); return k === '' || k === 'home' || k === 'index' || k === '/'; };
-      const buildPage = async (page) => {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const res = await apiFetch('/api/generate-page', { method: 'POST', body: JSON.stringify({ site: createdSlug, page, pages }) });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok && data.status === 'ok') return true;
-          } catch (e) { /* retry */ }
+      if (mode === 'import') {
+        await runImportBuild(setRow, buildPage, isHomePage);
+      } else {
+        // Research & planning: live category best-practice + reference analysis.
+        setRow(0, 'working', 'Researching your category & references…');
+        await Promise.all([
+          apiFetch('/api/research-category', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }).then((r) => r.json()).catch(() => {}),
+          apiFetch('/api/analyze-references', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }).then((r) => r.json()).catch(() => {}),
+        ]);
+        setRow(0, 'working', 'Mapping your site…');
+        const planData = await (await apiFetch('/api/generate-plan', { method: 'POST', body: JSON.stringify({ site: createdSlug }) })).json().catch(() => ({}));
+        if (planData.status !== 'ok' || !Array.isArray(planData.pages) || !planData.pages.length) throw new Error('plan failed');
+        setRow(0, 'done');
+        const pages = planData.pages;
+        setRow(1, 'working', 'Designing…'); setRow(3, 'working', 'Writing content…');
+        setRow(2, 'working', 'Designing header & footer…');
+        try { await (await apiFetch('/api/generate-chrome', { method: 'POST', body: JSON.stringify({ site: createdSlug, pages }) })).json(); }
+        catch (e) { /* keep going — deterministic header + base footer remain */ }
+        const failed = [];
+        for (let i = 0; i < pages.length; i++) {
+          setRow(2, 'working', 'Building ' + (i + 1) + '/' + pages.length + ': ' + pages[i].title);
+          if (!(await buildPage(pages[i], { pages }))) failed.push(pages[i]);
         }
-        return false;
-      };
-      const failed = [];
-      for (let i = 0; i < pages.length; i++) {
-        setRow(2, 'working', 'Building ' + (i + 1) + '/' + pages.length + ': ' + pages[i].title);
-        if (!(await buildPage(pages[i]))) failed.push(pages[i]);
+        const homePage = pages.find(isHomePage) || pages[0];
+        if (failed.includes(homePage)) {
+          setRow(2, 'working', 'Finishing the home page…');
+          try { await apiFetch('/api/seed-site', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }); } catch (_) {}
+        }
+        setRow(1, 'done'); setRow(2, 'done'); setRow(3, 'done');
       }
-      // The site must NEVER be home-less. If the Home page failed every attempt,
-      // fall back to a templated home so an index.astro always exists.
-      const homePage = pages.find(isHomeSlug) || pages[0];
-      if (failed.includes(homePage)) {
-        setRow(2, 'working', 'Finishing the home page…');
-        try { await apiFetch('/api/seed-site', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }); } catch (_) {}
-      }
-      setRow(1, 'done'); setRow(2, 'done'); setRow(3, 'done');
     } catch (e) {
       // Fallback so the site is never empty: a templated starter.
       try { await apiFetch('/api/seed-site', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }); } catch (_) {}
@@ -832,6 +831,50 @@
     document.getElementById('teamList').style.display='none';
     document.getElementById('buildDone').style.display='block';
     studioRunning = false;
+  }
+
+  // Deep import ("full mirror"): crawl the real site, mirror its IA with
+  // grouped/mega-menu nav, and generate EVERY page from its real content.
+  async function runImportBuild(setRow, buildPage, isHomePage){
+    // 1) Crawl the source site into the import corpus.
+    setRow(0, 'working', 'Importing your site — finding all your pages…');
+    let total = 0;
+    try {
+      const d = await (await apiFetch('/api/crawl-site', { method: 'POST', body: JSON.stringify({ site: createdSlug, phase: 'discover' }) })).json();
+      total = (d && d.total) || 0;
+    } catch (e) { /* fall through — plan can still work off the homepage scan */ }
+    let cursor = 0, guard = 0;
+    while (guard++ < 25) {
+      let r; try { r = await (await apiFetch('/api/crawl-site', { method: 'POST', body: JSON.stringify({ site: createdSlug, phase: 'fetch', cursor }) })).json(); } catch (e) { break; }
+      if (!r || r.status !== 'ok') break;
+      cursor = r.cursor || cursor; total = r.total || total;
+      setRow(0, 'working', 'Importing your content… ' + Math.min(cursor, total) + '/' + total + ' pages');
+      if (r.done) break;
+    }
+    setRow(0, 'done');
+
+    // 2) Plan from the crawl (grouped IA + a manifest of every page).
+    setRow(1, 'working', 'Mapping your site structure…');
+    const planData = await (await apiFetch('/api/generate-plan', { method: 'POST', body: JSON.stringify({ site: createdSlug }) })).json().catch(() => ({}));
+    if (planData.status !== 'ok' || !Array.isArray(planData.pages) || !planData.pages.length) throw new Error('plan failed');
+    const pages = planData.pages;
+    const nav = planData.nav || null;
+
+    // 3) Chrome — bespoke header (mega menus) + footer from the nav tree.
+    setRow(2, 'working', 'Designing navigation & footer…');
+    try { await (await apiFetch('/api/generate-chrome', { method: 'POST', body: JSON.stringify({ site: createdSlug, pages, nav }) })).json(); } catch (e) { /* deterministic header remains */ }
+    setRow(1, 'done');
+
+    // 4) Full mirror — generate every page from its real content. This is long.
+    setRow(3, 'working', 'Writing content…');
+    const failed = [];
+    for (let i = 0; i < pages.length; i++) {
+      setRow(2, 'working', 'Building page ' + (i + 1) + '/' + pages.length + ': ' + (pages[i].title || pages[i].path));
+      if (!(await buildPage(pages[i], { nav }))) failed.push(pages[i]);
+    }
+    const homePage = pages.find(isHomePage) || pages[0];
+    if (failed.includes(homePage)) { try { await apiFetch('/api/seed-site', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }); } catch (_) {} }
+    setRow(2, 'done'); setRow(3, 'done');
   }
 
   function goTo(n){

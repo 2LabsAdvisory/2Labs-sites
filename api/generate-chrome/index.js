@@ -34,8 +34,9 @@ function systemPrompt(brand) {
     'HEADER — requirements:',
     '- Frontmatter MUST be exactly: `interface Props { orgName: string; primaryCta?: string }` and destructure `const { orgName, primaryCta = "Get in touch" } = Astro.props;`.',
     '- A wordmark (render {orgName}) linking to "/", the full primary nav (use the EXACT routes provided), and a primary CTA button linking to the goal route.',
+    '- GROUPED / MEGA-MENU NAV: when a nav group has children (listed under it), the top-level item opens an accessible dropdown containing links to every child. A LARGE group (7+ children, e.g. Programs) must open a **mega-menu panel** laid out in 2–3 columns — polished, generous, on-brand, not a plain list. Open on BOTH hover and keyboard focus (`:focus-within`), with `aria-haspopup` + `aria-expanded`. Never omit children — every provided route must be reachable from the nav.',
     '- Give it real character: consider a refined sticky bar with a subtle blur/shadow on scroll, an accent underline or pill on the active/hover link, a tasteful inline-SVG logo glyph beside the wordmark, or a bold color band — make a deliberate art-directed choice, not the default.',
-    '- Fully responsive with a WORKING mobile menu: a hamburger button that toggles the nav open on small screens via a small inline <script> (vanilla JS, no imports). Ensure it is keyboard-accessible (button element, aria-expanded).',
+    '- Fully responsive with a WORKING mobile menu: a hamburger button that toggles the nav open on small screens via a small inline <script> (vanilla JS, no imports); grouped items collapse into an accordion/indented list on mobile. Ensure it is keyboard-accessible (button element, aria-expanded).',
     '',
     'FOOTER — requirements:',
     '- Frontmatter MUST be exactly: `interface Props { orgName: string }` and `const { orgName } = Astro.props; const year = new Date().getFullYear();`.',
@@ -68,10 +69,22 @@ module.exports = async function (context, req) {
     const orgName = content.org_name || site.name || 'Your Organization';
     const primaryCta = content.primary_goal || 'Get in touch';
 
+    // Imported sites pass a nav TREE (groups → children) for mega menus; blank/
+    // describe sites pass a flat page list.
+    const navTree = Array.isArray(req.body.nav) && req.body.nav.length ? req.body.nav : null;
     const pages = Array.isArray(req.body.pages) && req.body.pages.length ? req.body.pages : [{ slug: 'home', title: 'Home' }, { slug: 'contact', title: 'Contact' }];
-    const nav = pages.map((p) => `- ${p.title} → ${routeFor(p.slug)}`).join('\n');
-    const goalPage = pages.find((p) => /contact|donate|volunteer|sign|book|buy|register|get-started|quote/i.test(kebab(p.slug) + ' ' + p.title)) || pages[pages.length - 1];
-    const goalRoute = routeFor(goalPage.slug);
+    const nav = navTree
+      ? navTree.map((g) => `- ${g.title} → ${g.route}` + ((g.children || []).length ? '\n' + g.children.map((c) => `    · ${c.title} → ${c.route}`).join('\n') : '')).join('\n')
+      : pages.map((p) => `- ${p.title} → ${routeFor(p.slug)}`).join('\n');
+    let goalRoute;
+    if (navTree) {
+      const flat = navTree.flatMap((g) => [{ title: g.title, route: g.route }, ...((g.children || []))]);
+      const g = flat.find((p) => /contact|donate|volunteer|sign|book|buy|register|get-started|quote|support/i.test((p.route || '') + ' ' + (p.title || '')));
+      goalRoute = (g && g.route) || (navTree[navTree.length - 1] || {}).route || '/';
+    } else {
+      const goalPage = pages.find((p) => /contact|donate|volunteer|sign|book|buy|register|get-started|quote/i.test(kebab(p.slug) + ' ' + p.title)) || pages[pages.length - 1];
+      goalRoute = routeFor(goalPage.slug);
+    }
 
     const logoUrl = brand.logo && typeof brand.logo.url === 'string' ? brand.logo.url : '';
     const user = [

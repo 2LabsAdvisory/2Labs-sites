@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/bundle-site.js",
     "start": "func start",
-    "test": "node tests/index.test.js && node tests/index.integration.test.js && node tests/container-render.test.js"
+    "test": "node tests/index.test.js && node tests/studio.test.js && node tests/index.integration.test.js && node tests/container-render.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
