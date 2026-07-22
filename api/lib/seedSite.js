@@ -117,38 +117,73 @@ function homeFromBrief(brief) {
   const offers = Array.isArray(content.offers) ? content.offers.filter(Boolean).slice(0, 12) : [];
   const S = (v) => JSON.stringify(v); // safe JS literal (handles quotes/newlines)
 
+  const tiles = (offers.length ? offers.slice(0, 5) : ['Our Programs', 'Get Involved', 'About Us']);
+
   return `---
 import BaseLayout from '../layouts/BaseLayout.astro';
 const org = ${S(org)};
 const mission = ${S(mission)};
 const cta = ${S(cta)};
 const offers = ${S(offers)};
+const tiles = ${S(tiles)};
 ---
 <BaseLayout title="Home" description={mission} orgName={org} primaryCta={cta}>
   <section class="hero">
-    <h1>Welcome to {org}</h1>
-    <p>{mission}</p>
-    <a class="hero-cta" href="/contact">{cta}</a>
+    <div class="hero-inner">
+      <p class="eyebrow">Welcome</p>
+      <h1>{org}</h1>
+      <p class="lede">{mission}</p>
+      <div class="hero-cta-row">
+        <a class="btn btn-solid" href="/contact">{cta}</a>
+        <a class="btn btn-ghost" href="#offers">Explore what we do</a>
+      </div>
+    </div>
   </section>
-  {offers.length > 0 && (
-    <section class="offers">
-      <h2>What we offer</h2>
-      <div class="offer-grid">
-        {offers.map((o) => (<div class="offer-card"><h3>{o}</h3></div>))}
+  {tiles.length > 0 && (
+    <section class="tiles">
+      <div class="tile-row">
+        {tiles.map((t, i) => (<a class={"tile tile-" + (i % 4)} href="#offers"><span>{t}</span><span class="tile-arrow">→</span></a>))}
       </div>
     </section>
   )}
+  {offers.length > 0 && (
+    <section id="offers" class="offers">
+      <h2>What we offer</h2>
+      <div class="offer-grid">
+        {offers.map((o) => (<div class="offer-card"><h3>{o}</h3><p>Learn how {org} can help.</p></div>))}
+      </div>
+    </section>
+  )}
+  <section class="cta-band">
+    <h2>Ready to take the next step?</h2>
+    <a class="btn btn-invert" href="/contact">{cta}</a>
+  </section>
 </BaseLayout>
 <style>
-  .hero { max-width: 780px; margin: 0 auto; padding: 90px 24px 40px; text-align: center; }
-  .hero h1 { font-size: 46px; line-height: 1.1; }
-  .hero p { font-size: 18px; color: var(--ink-soft); line-height: 1.6; margin: 18px 0 28px; }
-  .hero-cta { display: inline-block; background: var(--primary); color: var(--on-primary); font-weight: 600; padding: 13px 26px; border-radius: 10px; text-decoration: none; }
-  .offers { max-width: 1000px; margin: 0 auto; padding: 30px 24px 60px; }
-  .offers h2 { font-size: 26px; text-align: center; margin-bottom: 24px; }
-  .offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-  .offer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
-  .offer-card h3 { font-size: 17px; }
+  .hero { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: var(--primary-contrast); }
+  .hero-inner { max-width: 900px; margin: 0 auto; padding: 96px 24px 84px; text-align: center; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 13px; font-weight: 700; opacity: .85; margin-bottom: 14px; }
+  .hero h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.05; font-family: var(--font-heading); }
+  .lede { font-size: clamp(17px, 2.2vw, 21px); line-height: 1.6; margin: 20px auto 30px; max-width: 720px; opacity: .95; }
+  .hero-cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-block; font-weight: 700; padding: 13px 26px; border-radius: 12px; text-decoration: none; }
+  .btn-solid { background: var(--primary-contrast); color: var(--primary); }
+  .btn-ghost { border: 1.5px solid currentColor; color: var(--primary-contrast); }
+  .btn-invert { background: var(--primary); color: var(--primary-contrast); }
+  .tiles { max-width: 1120px; margin: 0 auto; padding: 0 24px; transform: translateY(-34px); }
+  .tile-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  .tile { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 20px 22px; border-radius: 14px; font-weight: 700; text-decoration: none; box-shadow: var(--shadow); color: var(--primary-contrast); }
+  .tile-0 { background: var(--primary); } .tile-1 { background: var(--secondary); } .tile-2 { background: var(--accent); color: var(--accent-contrast); } .tile-3 { background: var(--primary-dark); }
+  .tile-arrow { opacity: .8; }
+  .offers { max-width: 1120px; margin: 0 auto; padding: 20px 24px 70px; }
+  .offers h2 { font-size: 30px; text-align: center; margin-bottom: 28px; font-family: var(--font-heading); }
+  .offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+  .offer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 26px; box-shadow: var(--shadow); }
+  .offer-card h3 { font-size: 18px; margin-bottom: 8px; }
+  .offer-card p { color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; }
+  .cta-band { background: var(--primary-soft); text-align: center; padding: 64px 24px; }
+  .cta-band h2 { font-size: 28px; margin-bottom: 22px; font-family: var(--font-heading); color: var(--ink); }
+  @media (max-width: 640px) { .tiles { transform: none; padding-top: 24px; } }
 </style>
 `;
 }

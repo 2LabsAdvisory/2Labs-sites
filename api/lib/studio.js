@@ -121,13 +121,13 @@ const { orgName, primaryCta = 'Get in touch' } = Astro.props;
 </header>
 <style>
   .site-header { border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 40; }
-  .hdr-inner { max-width: 1180px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 20px; }
-  .brand { font-family: var(--font-heading); font-weight: 800; font-size: 18px; color: var(--ink); text-decoration: none; margin-right: auto; display: inline-flex; align-items: center; }
-  .brand-logo { height: 34px; width: auto; max-width: 180px; object-fit: contain; display: block; }
-  .primary-nav { display: flex; }
-  .nav-list { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; align-items: center; }
+  .hdr-inner { max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 14px; }
+  .brand { font-family: var(--font-heading); font-weight: 800; font-size: 18px; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; flex-shrink: 0; }
+  .brand-logo { height: 34px; width: auto; max-width: 170px; object-fit: contain; display: block; }
+  .primary-nav { display: flex; flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  .nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 1px; align-items: center; }
   .nav-item { position: relative; }
-  .nav-top { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--ink-soft); text-decoration: none; font-weight: 600; padding: 10px 12px; border-radius: 8px; white-space: nowrap; }
+  .nav-top { display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; color: var(--ink-soft); text-decoration: none; font-weight: 600; padding: 9px 9px; border-radius: 8px; white-space: nowrap; }
   .nav-top:hover, .nav-item:focus-within .nav-top { color: var(--ink); background: var(--primary-soft); }
   .caret { width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translateY(-1px); opacity: .6; }
   .mega { position: absolute; top: 100%; left: 0; margin-top: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 10px; min-width: 240px; opacity: 0; visibility: hidden; transform: translateY(6px); transition: opacity .16s ease, transform .16s ease, visibility .16s; z-index: 50; }
@@ -137,7 +137,7 @@ const { orgName, primaryCta = 'Get in touch' } = Astro.props;
   .mega-wide .mega-list { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
   .mega-list a { display: block; font-size: 13.5px; color: var(--ink-soft); text-decoration: none; padding: 8px 10px; border-radius: 7px; }
   .mega-list a:hover { color: var(--ink); background: var(--primary-soft); }
-  .cta { background: var(--primary); color: var(--primary-contrast); font-weight: 700; font-size: 14px; padding: 10px 18px; border-radius: 10px; text-decoration: none; white-space: nowrap; }
+  .cta { flex-shrink: 0; background: var(--primary); color: var(--primary-contrast); font-weight: 700; font-size: 13.5px; padding: 10px 16px; border-radius: 10px; text-decoration: none; white-space: nowrap; }
   .cta:hover { background: var(--primary-dark); }
   .nav-toggle { display: none; flex-direction: column; gap: 4px; background: none; border: 0; cursor: pointer; padding: 8px; margin-left: auto; }
   .nav-toggle span { width: 22px; height: 2px; background: var(--ink); border-radius: 2px; }

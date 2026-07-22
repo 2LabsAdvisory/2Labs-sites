@@ -59,7 +59,10 @@ function buildNav(rawTree, tidy) {
       route,
       children: (g.children || []).map((c) => ({ title: c.title || titleCase(c.path), route: routeForPath(c.path) })),
     };
-  });
+  })
+    // Drop a redundant "Home" group (the logo already links home) and any empty
+    // top-level item that resolves to the site root.
+    .filter((g) => g.route !== '/' && !/^home$/i.test(g.title));
   nav.sort((a, b) => (order.has(a.route) ? order.get(a.route) : 99) - (order.has(b.route) ? order.get(b.route) : 99));
   return nav;
 }

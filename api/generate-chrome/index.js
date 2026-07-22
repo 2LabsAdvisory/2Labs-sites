@@ -35,6 +35,7 @@ function systemPrompt(brand) {
     '- Frontmatter MUST be exactly: `interface Props { orgName: string; primaryCta?: string }` and destructure `const { orgName, primaryCta = "Get in touch" } = Astro.props;`.',
     '- A wordmark (render {orgName}) linking to "/", the full primary nav (use the EXACT routes provided), and a primary CTA button linking to the goal route.',
     '- GROUPED / MEGA-MENU NAV: when a nav group has children (listed under it), the top-level item opens an accessible dropdown containing links to every child. A LARGE group (7+ children, e.g. Programs) must open a **mega-menu panel** laid out in 2–3 columns — polished, generous, on-brand, not a plain list. Open on BOTH hover and keyboard focus (`:focus-within`), with `aria-haspopup` + `aria-expanded`. Never omit children — every provided route must be reachable from the nav.',
+    '- LAYOUT MUST NOT OVERLAP: the bar has to fit the logo, the full nav, AND the CTA on one line without items colliding. With many top-level groups (8+), keep nav labels compact (smaller font, tight padding, no wrapping onto the CTA), let the nav take the flexible middle space (flex:1, min-width:0), and keep the CTA a fixed, non-shrinking element (flex-shrink:0). If it still cannot fit at ~1100px, reduce nav font/spacing further or move secondary items into a "More" dropdown — NEVER let text overlap. Test mentally at 1024px and 1280px.',
     '- Give it real character: consider a refined sticky bar with a subtle blur/shadow on scroll, an accent underline or pill on the active/hover link, a tasteful inline-SVG logo glyph beside the wordmark, or a bold color band — make a deliberate art-directed choice, not the default.',
     '- Fully responsive with a WORKING mobile menu: a hamburger button that toggles the nav open on small screens via a small inline <script> (vanilla JS, no imports); grouped items collapse into an accordion/indented list on mobile. Ensure it is keyboard-accessible (button element, aria-expanded).',
     '',
@@ -101,22 +102,40 @@ module.exports = async function (context, req) {
     ].filter(Boolean).join('\n');
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-5', max_tokens: 8000, thinking: { type: 'disabled' },
-      system: systemPrompt(brand), tools: [CHROME_TOOL], tool_choice: { type: 'tool', name: 'submit_chrome' },
-      messages: [{ role: 'user', content: user }],
-    });
-    const response = await stream.finalMessage();
-    const tool = (response.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_chrome');
-    const header = tool && tool.input && typeof tool.input.header === 'string' ? tool.input.header : '';
-    const footer = tool && tool.input && typeof tool.input.footer === 'string' ? tool.input.footer : '';
+    // A mega-menu header (many child links) + full footer is large; 8k truncated
+    // the tool JSON and dropped us to the plain fallback. Give it room and
+    // validate COMPLETE components (closing tags), retrying once if truncated.
+    const buildChrome = async (msg) => {
+      const stream = anthropic.messages.stream({
+        model: 'claude-sonnet-5', max_tokens: 16000, thinking: { type: 'disabled' },
+        system: systemPrompt(brand), tools: [CHROME_TOOL], tool_choice: { type: 'tool', name: 'submit_chrome' },
+        messages: [{ role: 'user', content: msg }],
+      });
+      const response = await stream.finalMessage();
+      const tool = (response.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_chrome');
+      return {
+        header: tool && tool.input && typeof tool.input.header === 'string' ? tool.input.header : '',
+        footer: tool && tool.input && typeof tool.input.footer === 'string' ? tool.input.footer : '',
+        truncated: response.stop_reason === 'max_tokens',
+      };
+    };
+    const headerOk = (h) => h.includes('Astro.props') && h.includes('orgName') && h.includes('<header') && /<\/header>/.test(h);
+    const footerOk = (f) => f.includes('Astro.props') && f.includes('orgName') && f.includes('<footer') && /<\/footer>/.test(f);
 
-    // Only write components that came back valid (props contract intact), so a
-    // partial result can't break the render; anything missing keeps its prior
+    let { header, footer, truncated } = await buildChrome(user);
+    if (truncated || !headerOk(header) || !footerOk(footer)) {
+      context.log(`[generate-chrome] first attempt incomplete (truncated=${truncated}); retrying tighter`);
+      const r = await buildChrome(user + '\n\nCRITICAL: return BOTH files COMPLETE (they must end with </header> and </footer> respectively). Keep the design rich but do not get cut off — if the nav has many groups, use compact mega-menu panels rather than very long markup.');
+      if (headerOk(r.header)) header = r.header;
+      if (footerOk(r.footer)) footer = r.footer;
+    }
+
+    // Only write COMPLETE components (props contract + closing tag), so a
+    // truncated result can't break the render; anything missing keeps its prior
     // draft (deterministic header from generate-plan / _base footer).
     let wrote = [];
-    if (header.includes('Astro.props') && header.includes('orgName') && header.includes('<header')) { await setDraftFile(slug, 'src/components/Header.astro', header); wrote.push('header'); }
-    if (footer.includes('Astro.props') && footer.includes('orgName') && footer.includes('<footer')) { await setDraftFile(slug, 'src/components/Footer.astro', footer); wrote.push('footer'); }
+    if (headerOk(header)) { await setDraftFile(slug, 'src/components/Header.astro', header); wrote.push('header'); }
+    if (footerOk(footer)) { await setDraftFile(slug, 'src/components/Footer.astro', footer); wrote.push('footer'); }
     if (!wrote.length) throw new Error('The chrome designer returned no usable components.');
 
     await recordEvent({ type: 'generate', stage: 'chrome', result: 'success', site: slug, user: hashId(email), wrote });

@@ -141,6 +141,13 @@ module.exports = async function (context, req) {
         '',
       ].filter(Boolean) : []),
       (childLinks && childLinks.length) ? `This is a SECTION page. Feature its sub-pages prominently as a card/tile grid with a clear link to each:\n${childLinks.map((c) => `- ${c.title} → ${c.route}`).join('\n')}` : '',
+      // The homepage is the flagship — hold it to the highest bar.
+      pageRoute === '/' ? [
+        'THIS IS THE HOMEPAGE — the flagship. Make it unmistakably premium, on the level of a national nonprofit\'s best work:',
+        '- A commanding hero: a full-bleed real photograph (use the first provided image) with a strong brand-colour scrim + light text, a big confident headline and one-line value proposition, and 1–2 primary CTAs.',
+        '- Right below the hero, a row of bold QUICK-ACTION TILES (4–5, each a distinct brand colour) linking to the main destinations: ' + (navTree ? navTree.slice(0, 6).map((g) => `${g.title} → ${g.route}`).join(', ') : 'the key sections') + '.',
+        '- Then: a short mission/impact statement, a highlights grid of the main programs/sections (with real names), an impact/stats band, a testimonial or quote if warranted, and a strong closing CTA band. Rich, varied rhythm — never a plain heading + a lone button + plain cards.',
+      ].join('\n') : '',
       '',
       `Build this page — "${page.title}" (route ${pageRoute}). Purpose: ${page.purpose || 'Present this page\'s content clearly and drive the primary action.'}`,
       page.sections && page.sections.length ? 'Sections:\n' + sections : '',
