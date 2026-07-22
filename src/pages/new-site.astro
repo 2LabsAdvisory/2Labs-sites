@@ -139,12 +139,13 @@
   .font-sample .fs-body{ font-family:'Inter',sans-serif; }
   .font-sample span{ font-size:11.5px; color:var(--ink-soft); }
 
-  .logo-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .logo-thumb{ width:44px; height:44px; border-radius:9px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); overflow:hidden; }
-  .logo-thumb.light{ background:#F6EDE1; } .logo-thumb.dark{ background:var(--ink); }
-  .logo-thumb img{ width:30px;height:30px; object-fit:cover; border-radius:50%; }
+  .logo-row{ display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .logo-thumb{ min-width:64px; max-width:160px; height:46px; padding:6px 12px; border-radius:9px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); overflow:hidden; }
+  .logo-thumb.light{ background:#FFFFFF; } .logo-thumb.dark{ background:var(--ink); }
+  .logo-thumb img{ max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; }
   .logo-caption{ font-size:11px; color:var(--ink-soft); text-align:center; margin-top:4px; }
   .logo-item{ text-align:center; }
+  .logo-empty{ font-size:12px; color:var(--ink-soft); background:var(--surface); border:1px dashed var(--border); border-radius:9px; padding:12px 14px; }
 
   .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .chip{ background:var(--amber-tint-strong); color:var(--amber-dark); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:100px; border:1px solid #F3E3B8; outline:none; }
@@ -338,13 +339,15 @@
           </div>
         </div>
         <div class="review-block">
-          <div class="review-block-head"><h4>🏷️ Logo</h4><span class="edit-link">Replace</span></div>
-          <p class="block-note if-import" style="display:none;">Imported and prepared in light &amp; dark variants for you.</p>
-          <p class="block-note if-blank" style="display:none;">No logo yet — we generated a wordmark. Upload your own anytime.</p>
+          <div class="review-block-head"><h4>🏷️ Logo</h4><span class="edit-link" id="logoReplace">Replace</span></div>
+          <p class="block-note" id="logoNote">We'll use your logo in the header, footer &amp; across the design.</p>
           <div class="logo-row">
-            <div class="logo-item"><div class="logo-thumb light"><img src="/logo.png" alt="" /></div><div class="logo-caption">Light</div></div>
-            <div class="logo-item"><div class="logo-thumb dark"><img src="/logo.png" alt="" /></div><div class="logo-caption">Dark</div></div>
+            <div class="logo-item" id="logoItemLight"><div class="logo-thumb light"><img id="logoImgLight" src="" alt="Logo on light background" /></div><div class="logo-caption">On light</div></div>
+            <div class="logo-item" id="logoItemDark"><div class="logo-thumb dark"><img id="logoImgDark" src="" alt="Logo on dark background" /></div><div class="logo-caption">On dark</div></div>
+            <div class="logo-empty" id="logoEmpty">No logo detected — we'll use a text wordmark. Click <b>Replace</b> to upload one.</div>
+            <div class="logo-item" id="logoRemoveWrap" style="display:none; align-self:center;"><span class="edit-link" id="logoRemove">Remove</span></div>
           </div>
+          <input type="file" id="logoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" style="display:none;" />
         </div>
       </div>
 
@@ -371,7 +374,7 @@
             <h5>Brand</h5>
             <div class="summary-swatches" id="summarySwatches"></div>
             <div class="summary-line" id="summaryFonts"><span>Fonts:</span> Plus Jakarta Sans · Inter</div>
-            <div class="summary-line"><span>Logo:</span> light &amp; dark ready</div>
+            <div class="summary-line" id="summaryLogo"><span>Logo:</span> text wordmark</div>
             <span class="edit-link" onclick="goTo(2)">Edit brand</span>
           </div>
           <div class="summary-card">
@@ -558,7 +561,51 @@
 
   // ---- Studio: Brand Extraction + Senior Brand Designer (Build Brief §3.1) ----
   const brandState = { import:null, blank:null };
+  // The chosen logo per mode: { url, source:'scanned'|'uploaded' } or null (wordmark).
+  const logoState = { import:null, blank:null, describe:null };
   function up(hex){ const h=String(hex||'').replace('#','').trim(); return /^[0-9a-fA-F]{6}$/.test(h) ? ('#'+h).toUpperCase() : '#000000'; }
+  function renderLogo(){
+    const st = logoState[mode];
+    const imgL=document.getElementById('logoImgLight'), imgD=document.getElementById('logoImgDark');
+    const empty=document.getElementById('logoEmpty'), note=document.getElementById('logoNote');
+    const items=[document.getElementById('logoItemLight'), document.getElementById('logoItemDark')];
+    const removeWrap=document.getElementById('logoRemoveWrap');
+    if(st && st.url){
+      imgL.src=st.url; imgD.src=st.url;
+      items.forEach(i=>{ if(i) i.style.display=''; });
+      empty.style.display='none'; removeWrap.style.display='';
+      note.textContent = st.source==='scanned'
+        ? "Imported from your site — we'll use it in the header, footer & design. Replace if it's not the right image."
+        : "Uploaded — we'll use it in the header, footer & across the design.";
+    } else {
+      imgL.src=''; imgD.src='';
+      items.forEach(i=>{ if(i) i.style.display='none'; });
+      empty.style.display=''; removeWrap.style.display='none';
+      note.textContent = "We'll use a text wordmark. Click Replace to upload your logo.";
+    }
+  }
+  function fileToBase64(file){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>{ const s=String(r.result||''); resolve(s.slice(s.indexOf(',')+1)); }; r.onerror=()=>reject(new Error('read failed')); r.readAsDataURL(file); }); }
+  (function wireLogo(){
+    const replace=document.getElementById('logoReplace'), file=document.getElementById('logoFile'), remove=document.getElementById('logoRemove');
+    if(!replace||!file) return;
+    replace.onclick=()=>file.click();
+    if(remove) remove.onclick=()=>{ logoState[mode]=null; renderLogo(); };
+    file.onchange=async(e)=>{
+      const f=e.target.files && e.target.files[0]; if(!f) return;
+      if(f.size > 2*1024*1024){ alert('Please choose an image under 2 MB.'); e.target.value=''; return; }
+      const note=document.getElementById('logoNote'); const prev=note.textContent; note.textContent='Uploading your logo…';
+      try{
+        const dataBase64=await fileToBase64(f);
+        const res=await apiFetch('/api/upload-asset', { method:'POST', body: JSON.stringify({ name:f.name, type:f.type, dataBase64 }) });
+        const data=await res.json().catch(()=>({}));
+        const url=data && data.asset && data.asset.url;
+        if(res.ok && url){ logoState[mode]={ url, source:'uploaded' }; renderLogo(); }
+        else { note.textContent=prev; alert((data && data.error) || 'Could not upload that image.'); }
+      }catch(err){ note.textContent=prev; alert('Could not upload that image.'); }
+      finally{ e.target.value=''; }
+    };
+    renderLogo();
+  })();
   function setBrandBusy(v){
     document.getElementById('brandBusy').style.display = v ? 'flex' : 'none';
     document.getElementById('colorBlock').style.display = v ? 'none' : '';
@@ -583,6 +630,7 @@
         : '⚠ Some pairings need adjustment for WCAG 2.2 AA — tweak the hex values';
     }
     renderColors();
+    renderLogo();
   }
   async function ensureBrand(){
     if(brandState[mode]){ applyBrand(brandState[mode]); return; }
@@ -598,7 +646,11 @@
       const res = await apiFetch('/api/generate-brand', { method:'POST', body: JSON.stringify(payload) });
       const data = await res.json().catch(()=>({}));
       if(data.status==='ok' && data.brand && data.brand.colors){
-        brandState[mode]=data; applyBrand(data);
+        brandState[mode]=data;
+        // Adopt the logo captured from the scan (once) — the user can Replace it.
+        const scannedLogo = data.logo || (data.brand.logo && data.brand.logo.url);
+        if(scannedLogo && !logoState[mode]) logoState[mode]={ url:scannedLogo, source:'scanned' };
+        applyBrand(data);
         // Import: prefill Step 3 content from what the scan extracted.
         if(mode==='import' && data.content){
           const c=data.content;
@@ -640,6 +692,8 @@
     [...p.core, ...p.accent].forEach(c=>{ const i=document.createElement('i'); i.style.background=c.hex; sw.appendChild(i); });
     const t = (brandState[mode] && brandState[mode].brand && brandState[mode].brand.typography) || {};
     document.getElementById('summaryFonts').innerHTML='<span>Fonts:</span> '+(t.heading||'Plus Jakarta Sans')+' · '+(t.body||'Inter');
+    const ls=logoState[mode];
+    document.getElementById('summaryLogo').innerHTML='<span>Logo:</span> '+(ls&&ls.url ? (ls.source==='uploaded'?'your uploaded logo':'imported from your site') : 'text wordmark');
     const org=(document.getElementById('orgName').value||'').trim()||'(your org)';
     const offerCount=document.querySelectorAll('#offerRow .chip:not(.add)').length;
     const goal=CONTENT[mode].goal||'(not set)';
@@ -662,7 +716,14 @@
         colors: { core:map(p.core), accents:map(p.accent), semantic:map(p.semantic), neutral:map(p.neutral) },
         typography: { heading:t.heading||'Plus Jakarta Sans', body:t.body||'Inter', scale:{h1:32,h2:24,h3:19,body:16,small:13} },
         voice: (bs && bs.brand && bs.brand.voice) || [],
-        a11y: (bs && bs.a11y) || { standard:'WCAG 2.2 AA', passed:true }
+        a11y: (bs && bs.a11y) || { standard:'WCAG 2.2 AA', passed:true },
+        ...(function(){
+          const ls=logoState[mode]; if(!ls||!ls.url) return {};
+          // Absolutize an uploaded /api/asset URL so the logo also resolves on
+          // the published standalone site (scanned logos are already absolute).
+          const url=/^https?:\/\//i.test(ls.url) ? ls.url : (location.origin + ls.url);
+          return { logo:{ url, source:ls.source } };
+        })()
       },
       content: {
         org_name: (document.getElementById('orgName').value||'').trim(),

@@ -123,7 +123,7 @@ module.exports = async function (context, req) {
     // Write the brand tokens + nav Header, and open the site for editing.
     const goalPage = pages.find((p) => /contact|donate|volunteer|sign|book|buy/i.test(p.slug + ' ' + p.title)) || pages[pages.length - 1];
     await setDraftFile(slug, 'src/styles/tokens.css', tokensFromBrand(brief.brand));
-    await setDraftFile(slug, 'src/components/Header.astro', headerDraft(pages, routeFor(goalPage.slug)));
+    await setDraftFile(slug, 'src/components/Header.astro', headerDraft(pages, routeFor(goalPage.slug), (brief.brand && brief.brand.logo && brief.brand.logo.url) || ''));
     await upsertSite(email, { slug, editable: true });
 
     await recordEvent({ type: 'generate', stage: 'plan', result: 'success', site: slug, user: hashId(email), pages: pages.length, used_fallback: !modelPages.length, archetype: (brief.interpretation && brief.interpretation.archetype) || null });

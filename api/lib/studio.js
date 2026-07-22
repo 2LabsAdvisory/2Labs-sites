@@ -32,15 +32,21 @@ function brandSummary(brand) {
 }
 
 /** Deterministic per-site Header (nav from the sitemap), overlaying _base's. */
-function headerDraft(pages, goalRoute) {
+function headerDraft(pages, goalRoute, logoUrl) {
   const links = (pages || []).map((p) => `<a href="${routeFor(p.slug)}">${escapeHtml(p.title)}</a>`).join('\n      ');
+  // Use the brand logo as the wordmark when we have a safe URL; keep the org
+  // name as the link's accessible name so the header stays readable & a11y-safe.
+  const safeLogo = typeof logoUrl === 'string' && /^[^"'<>\s]+$/.test(logoUrl) ? logoUrl : '';
+  const brand = safeLogo
+    ? `<a href="/" class="brand" aria-label={orgName}><img src="${safeLogo}" alt="" class="brand-logo" /></a>`
+    : `<a href="/" class="brand">{orgName}</a>`;
   return `---
 interface Props { orgName: string; primaryCta?: string; }
 const { orgName, primaryCta = 'Get in touch' } = Astro.props;
 ---
 <header class="site-header">
   <div class="hdr-inner">
-    <a href="/" class="brand">{orgName}</a>
+    ${brand}
     <nav aria-label="Primary">
       ${links}
     </nav>
@@ -50,7 +56,8 @@ const { orgName, primaryCta = 'Get in touch' } = Astro.props;
 <style>
   .site-header { border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 10; }
   .hdr-inner { max-width: 1120px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; gap: 24px; }
-  .brand { font-family: var(--font-heading); font-weight: 800; font-size: 18px; color: var(--ink); text-decoration: none; margin-right: auto; }
+  .brand { font-family: var(--font-heading); font-weight: 800; font-size: 18px; color: var(--ink); text-decoration: none; margin-right: auto; display: inline-flex; align-items: center; }
+  .brand-logo { height: 34px; width: auto; max-width: 180px; object-fit: contain; display: block; }
   nav { display: flex; gap: 20px; }
   nav a { font-size: 14px; color: var(--ink-soft); text-decoration: none; font-weight: 500; }
   nav a:hover { color: var(--ink); }

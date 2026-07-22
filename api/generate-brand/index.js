@@ -82,6 +82,54 @@ function isSafeUrl(u) {
   } catch { return null; }
 }
 
+// Pull the organization's LOGO out of the scanned page so an import can carry
+// the real brand mark into the design. Ranked by how logo-like each source is:
+// JSON-LD Organization.logo → an <img> that says "logo" → apple-touch-icon →
+// og:image → favicon. Returns the best plus a few alternates (the wizard lets
+// the user switch if we captured the wrong one). URLs are resolved to absolute.
+function pickLogo(html, pageUrl) {
+  const abs = (u) => { try { return new URL(String(u).trim(), pageUrl).toString(); } catch { return null; } };
+  const cands = [];
+  const push = (u, score) => { const a = u && abs(u); if (a && /^https?:/i.test(a)) cands.push({ url: a, score }); };
+
+  // 1) JSON-LD Organization/LocalBusiness logo (the most authoritative source).
+  for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const walk = (o) => {
+        if (!o || typeof o !== 'object') return;
+        if (o.logo) push(typeof o.logo === 'string' ? o.logo : o.logo.url, 100);
+        for (const k in o) if (o[k] && typeof o[k] === 'object') walk(o[k]);
+      };
+      const j = JSON.parse(m[1].trim());
+      Array.isArray(j) ? j.forEach(walk) : walk(j);
+    } catch { /* ignore malformed JSON-LD */ }
+  }
+  // 2) An <img> whose src/class/id/alt mentions "logo".
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = m[0];
+    if (!/logo/i.test(tag)) continue;
+    const src = (tag.match(/\bsrc=["']([^"']+)["']/i) || [])[1];
+    if (src) push(src, 80);
+  }
+  // 3) apple-touch-icon (square, usually a clean brand mark).
+  for (const m of html.matchAll(/<link\b[^>]*rel=["'][^"']*apple-touch-icon[^"']*["'][^>]*>/gi)) {
+    push((m[0].match(/\bhref=["']([^"']+)["']/i) || [])[1], 60);
+  }
+  // 4) og:image (may be a share banner rather than a logo — lower priority).
+  const og = (html.match(/<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i) || [])[1]
+          || (html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image["']/i) || [])[1];
+  if (og) push(og, 40);
+  // 5) favicon / icon (last resort).
+  for (const m of html.matchAll(/<link\b[^>]*rel=["'](?:shortcut icon|icon)["'][^>]*>/gi)) {
+    push((m[0].match(/\bhref=["']([^"']+)["']/i) || [])[1], 20);
+  }
+
+  const best = new Map();
+  for (const c of cands) { const cur = best.get(c.url); if (cur == null || c.score > cur) best.set(c.url, c.score); }
+  const ranked = [...best.entries()].sort((a, b) => b[1] - a[1]).map(([u]) => u);
+  return { logo: ranked[0] || null, candidates: ranked.slice(0, 6) };
+}
+
 async function scanSite(rawUrl) {
   const url = isSafeUrl(rawUrl);
   if (!url) return null;
@@ -103,7 +151,8 @@ async function scanSite(rawUrl) {
   const fonts = [...new Set([...html.matchAll(/font-family:\s*([^;"'}]+)/gi)].map((m) => m[1].split(',')[0].replace(/['"]/g, '').trim()))].filter(Boolean).slice(0, 6);
   const title = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || '';
   const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000);
-  return { url, colors, fonts, title, text };
+  const { logo, candidates } = pickLogo(html, url);
+  return { url, colors, fonts, title, text, logo, logoCandidates: candidates };
 }
 
 // --- Server-side WCAG verification ------------------------------------------
@@ -168,12 +217,19 @@ module.exports = async function (context, req) {
     const tool = (response.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_brand');
     if (!tool || !tool.input || !tool.input.colors) throw new Error('The brand designer returned no system.');
     const brand = tool.input;
+    // Carry the real logo captured from the scanned site into the brand so the
+    // Studio (Header/Footer design + tokens --logo-url) uses it. The wizard can
+    // override this if we grabbed the wrong image.
+    if (scan && scan.logo) brand.logo = { url: scan.logo, source: 'scanned' };
     const a11y = verifyContrast(brand);
 
     await recordEvent({ type: 'generate', stage: 'brand', result: 'success', mode, user: hashId(email), scanned: !!scan, a11y_passed: !!(a11y && a11y.passed) });
     context.res = {
       status: 200,
-      body: { status: 'ok', mode, scanned: !!scan, brand, rationale: brand.rationale || '', a11y, content: brand.content || null },
+      body: {
+        status: 'ok', mode, scanned: !!scan, brand, rationale: brand.rationale || '', a11y, content: brand.content || null,
+        logo: (scan && scan.logo) || null, logoCandidates: (scan && scan.logoCandidates) || [],
+      },
     };
   } catch (err) {
     context.log.error(err);
