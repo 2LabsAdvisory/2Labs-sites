@@ -126,15 +126,33 @@ module.exports = async function (context, req) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     // Inject any human-approved learning-loop improvements for this agent.
     const systemFinal = await withAddendum(system, 'prompt:generate-page');
-    const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-5', max_tokens: 12000, thinking: { type: 'disabled' },
-      system: systemFinal, tools: [PAGE_TOOL], tool_choice: { type: 'tool', name: 'submit_page' },
-      messages: [{ role: 'user', content: user }],
-    });
-    const response = await stream.finalMessage();
-    const tool = (response.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_page');
-    const pageContent = tool && tool.input && typeof tool.input.content === 'string' ? tool.input.content : '';
-    if (!pageContent.includes('BaseLayout')) throw new Error('The page did not build correctly.');
+
+    // The richest pages (especially Home) can hit max_tokens and truncate the
+    // forced tool-call JSON — which yields empty/invalid content and, before,
+    // silently dropped the page. Give it real room (16k) and validate that the
+    // file is COMPLETE (closing </BaseLayout>), retrying once for a tighter,
+    // complete file so a truncation never costs us the page.
+    const buildOnce = async (userMsg) => {
+      const stream = anthropic.messages.stream({
+        model: 'claude-sonnet-5', max_tokens: 16000, thinking: { type: 'disabled' },
+        system: systemFinal, tools: [PAGE_TOOL], tool_choice: { type: 'tool', name: 'submit_page' },
+        messages: [{ role: 'user', content: userMsg }],
+      });
+      const response = await stream.finalMessage();
+      const tool = (response.content || []).find((c) => c.type === 'tool_use' && c.name === 'submit_page');
+      const content = tool && tool.input && typeof tool.input.content === 'string' ? tool.input.content : '';
+      return { content, truncated: response.stop_reason === 'max_tokens' };
+    };
+    const isComplete = (c) => c.includes('BaseLayout') && /<\/BaseLayout>/.test(c);
+
+    let { content: pageContent, truncated } = await buildOnce(user);
+    if (!isComplete(pageContent) || truncated) {
+      context.log(`[generate-page] "${page.slug}" first attempt incomplete (truncated=${truncated}, len=${pageContent.length}); retrying tighter`);
+      const retryUser = user + '\n\nCRITICAL: Return the COMPLETE .astro file — it must NOT be cut off and MUST end with the closing </BaseLayout> tag. Keep it rich but tighter (fewer, denser sections if needed) so the whole file fits comfortably within the limit.';
+      const r = await buildOnce(retryUser);
+      if (isComplete(r.content) && (!r.truncated || !isComplete(pageContent))) pageContent = r.content;
+    }
+    if (!isComplete(pageContent)) throw new Error('The page did not build correctly.');
 
     const path = pageFileFor(page.slug);
     await setDraftFile(slug, path, pageContent);

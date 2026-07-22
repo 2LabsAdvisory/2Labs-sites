@@ -731,10 +731,31 @@
       setRow(2, 'working', 'Designing header & footer…');
       try { await (await apiFetch('/api/generate-chrome', { method: 'POST', body: JSON.stringify({ site: createdSlug, pages }) })).json(); }
       catch (e) { /* keep going — deterministic header + base footer remain */ }
+      // Build each page. A page-build 500 resolves .json() WITHOUT throwing, so
+      // treat a non-ok HTTP status / non-'ok' body as a failure (not silent
+      // success), retry once, and track what failed.
+      const isHomeSlug = (p) => { const k = ((p && p.slug) || '').toLowerCase().trim(); return k === '' || k === 'home' || k === 'index' || k === '/'; };
+      const buildPage = async (page) => {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const res = await apiFetch('/api/generate-page', { method: 'POST', body: JSON.stringify({ site: createdSlug, page, pages }) });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.status === 'ok') return true;
+          } catch (e) { /* retry */ }
+        }
+        return false;
+      };
+      const failed = [];
       for (let i = 0; i < pages.length; i++) {
         setRow(2, 'working', 'Building ' + (i + 1) + '/' + pages.length + ': ' + pages[i].title);
-        try { await (await apiFetch('/api/generate-page', { method: 'POST', body: JSON.stringify({ site: createdSlug, page: pages[i], pages }) })).json(); }
-        catch (e) { /* skip a page that failed; keep building the rest */ }
+        if (!(await buildPage(pages[i]))) failed.push(pages[i]);
+      }
+      // The site must NEVER be home-less. If the Home page failed every attempt,
+      // fall back to a templated home so an index.astro always exists.
+      const homePage = pages.find(isHomeSlug) || pages[0];
+      if (failed.includes(homePage)) {
+        setRow(2, 'working', 'Finishing the home page…');
+        try { await apiFetch('/api/seed-site', { method: 'POST', body: JSON.stringify({ site: createdSlug }) }); } catch (_) {}
       }
       setRow(1, 'done'); setRow(2, 'done'); setRow(3, 'done');
     } catch (e) {
